@@ -1,0 +1,15 @@
+# pyproject.toml
+[project]
+name = "Comfyui-MMH3-UltimateUpscale"
+description = "Upscale long, high-resolution MiniMax H3 video on a VRAM-limited GPU in a single node."
+version = "0.0.0"
+license = { file = "LICENSE.txt" }
+dependencies  = [] 
+
+[project.urls]
+Repository = "https://github.com/bbaudio-2025/Comfyui-MMH3-UltimateUpscale"
+
+[tool.comfy]
+PublisherId = "bbaudio" 
+DisplayName = "Comfyui-MMH3-UltimateUpscale" 
+Icon = ""
