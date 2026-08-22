@@ -1217,6 +1217,23 @@ class MMH3UltimateUpscale(io.ComfyNode):
         if video.shape[0] != 1:
             raise ValueError("MMH3UltimateUpscale expects a single-video latent (batch 1)")
 
+        # fail early if the upscale target is smaller than the spatial tile size;
+        # tiles can never cover a chunk smaller than one tile, which would only
+        # surface as a confusing error during the sampling/stitching phase.
+        if latent_upscale_param is not None and spatial_split_param is not None:
+            up_w = int(latent_upscale_param["width"])
+            up_h = int(latent_upscale_param["height"])
+            tile_w = int(spatial_split_param["tile_width"])
+            tile_h = int(spatial_split_param["tile_height"])
+            if up_w < tile_w:
+                raise ValueError(
+                    f"Upscale width ({up_w}) must be >= tile_width ({tile_w})"
+                )
+            if up_h < tile_h:
+                raise ValueError(
+                    f"Upscale height ({up_h}) must be >= tile_height ({tile_h})"
+                )
+
         tv = video.shape[2]
         ta = audio.shape[-1]
 
