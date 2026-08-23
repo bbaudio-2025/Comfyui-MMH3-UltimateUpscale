@@ -1,0 +1,150 @@
+{
+  "MMH3LatentUpscaleWithModelParams": {
+    "display_name": "MMH3 Latent Upscale with Model Params",
+    "description": "Bundle the H3 3D latent upscale settings for the 'MMH3 Ultimate Upscale' node. Uses the minimax_h3_latent_upscaler_3d checkpoints from the latent_upscale_models folder (not the standard LatentUpscale loader - the H3 weights do not match its supported architectures).",
+    "inputs": {
+      "model_name": {
+        "tooltip": "The H3 latent upscale model file in the latent_upscale_models folder (e.g. minimax_h3_latent_upscaler_3d_*.safetensors). Loading a non-H3 upscale model may error."
+      },
+      "width": {
+        "tooltip": "Target overall pixel width of the upscaled frame (snapped to a multiple of 32, the H3 upscaler's required grid). Must match the conditioning's generation size."
+      },
+      "height": {
+        "tooltip": "Target overall pixel height of the upscaled frame (snapped to a multiple of 32, the H3 upscaler's required grid). Must match the conditioning's generation size."
+      }
+    },
+    "outputs": {
+      "0": {
+        "tooltip": "Upscale settings consumed by 'MMH3 Ultimate Upscale'."
+      }
+    }
+  },
+  "MMH3LatentUpscaleParams": {
+    "display_name": "MMH3 Latent Upscale Params",
+    "description": "Bundle model-free latent upscale settings for the 'MMH3 Ultimate Upscale' node. The chunk's video latent is resized spatially by interpolation (audio untouched) - no H3 upscale model is loaded. Target size must match the conditioning's generation size. Reference: ComfyUI 'Upscale Latent'.",
+    "inputs": {
+      "method": {
+        "tooltip": "Interpolation used to resize the video latent's spatial HxW (same as Upscale Latent)."
+      },
+      "width": {
+        "tooltip": "Target overall pixel width of the upscaled frame (snapped to a multiple of 32). Must match the conditioning's generation size."
+      },
+      "height": {
+        "tooltip": "Target overall pixel height of the upscaled frame (snapped to a multiple of 32). Must match the conditioning's generation size."
+      }
+    },
+    "outputs": {
+      "0": {
+        "tooltip": "Model-free upscale settings consumed by 'MMH3 Ultimate Upscale'."
+      }
+    }
+  },
+  "MMH3TemporalSplitParams": {
+    "display_name": "MMH3 Temporal Split Params",
+    "description": "Bundle the temporal split settings for the 'MMH3 Ultimate Upscale' node: how the input latent is cut into overlapping time chunks (outer loop) and how seams are anchored.",
+    "inputs": {
+      "chunk_length": {
+        "tooltip": "Target pixel frames per chunk (at 24 fps). MUST be a multiple of 17 (one keyframe grid step). 136 = ~5.7s, 153 = ~6.4s."
+      },
+      "temporal_overlap": {
+        "tooltip": "Pixel frames of overlap between consecutive chunks. MUST be a multiple of 17; recommended 17."
+      },
+      "anchor_strength": {
+        "tooltip": "How much of the previous chunk's re-sampled boundary the frozen frame-0 anchor keeps: 1.0 = exact content, 0.999 = model default, 0.0 = no anchoring."
+      }
+    },
+    "outputs": {
+      "0": {
+        "tooltip": "Temporal split settings consumed by 'MMH3 Ultimate Upscale'."
+      }
+    }
+  },
+  "MMH3SpatialSplitParams": {
+    "display_name": "MMH3 Spatial Split Params",
+    "description": "Bundle the spatial tile settings for the 'MMH3 Ultimate Upscale' node: tile size, per-axis overlap and fade, and seam stitching rules (inner loop).",
+    "inputs": {
+      "tile_width": {
+        "tooltip": "Tile width in PIXELS at the (upscaled) chunk resolution. Must be a multiple of 32."
+      },
+      "tile_height": {
+        "tooltip": "Tile height in PIXELS at the (upscaled) chunk resolution. Must be a multiple of 32."
+      },
+      "spatial_w_overlap": {
+        "tooltip": "Horizontal overlap in PIXELS between neighbouring tiles. Must be a multiple of 32 and smaller than the tile width."
+      },
+      "spatial_h_overlap": {
+        "tooltip": "Vertical overlap in PIXELS between neighbouring tiles. Must be a multiple of 32 and smaller than the tile height."
+      },
+      "fade_width": {
+        "tooltip": "Width (in latent pixels) of the frozen->free gradient at the shared seam: the first fade_width pixels of the overlap band transition from frozen (keep the neighbour's content) to freely re-sampled; the rest of the overlap band is re-sampled. Default 32. Set to 0 to freeze the entire overlap strip (keep the neighbour's content)."
+      },
+      "fade_height": {
+        "tooltip": "Height (in latent pixels) of the frozen->free gradient at the shared seam: the first fade_height pixels of the overlap band transition from frozen (keep the neighbour's content) to freely re-sampled; the rest of the overlap band is re-sampled. Default 32. Set to 0 to freeze the entire overlap strip (keep the neighbour's content)."
+      },
+      "min_tile_size": {
+        "tooltip": "Minimum PIXEL size of edge tiles. If a leftover edge tile would be smaller, the last tile is pulled back until it reaches at least this size; the seam overlap then grows and is blended over its full width. 256 (default) keeps small leftover tiles as-is. Must not exceed the tile size."
+      },
+      "overlap_mode": {
+        "tooltip": "Who wins each shared overlap band when stitching. 'earlier' (default): the already-stitched content wins. 'later': the re-sampled tile wins. Does NOT affect the noise mask."
+      },
+      "overlap_blend": {
+        "tooltip": "How the overlap band transitions when stitching: linear cross-fade (default), smoothstep (eased), overwrite (whole band from the overlap_mode side), midpoint (hard switch at the band's middle)."
+      }
+    },
+    "outputs": {
+      "0": {
+        "tooltip": "Spatial split settings consumed by 'MMH3 Ultimate Upscale'."
+      }
+    }
+  },
+  "MMH3UltimateUpscale": {
+    "display_name": "MMH3 Ultimate Upscale",
+    "description": "Re-sample an already-denoised MiniMax H3 AV latent through the full auto pipeline in one node: temporal split (outer loop) -> latent upscale (per chunk) -> spatial split (inner loop) -> per-tile sampling with preview -> spatial stitch -> temporal stitch. Each chunk/tile is sampled with a fresh guider built from the per-piece conditioning (re-anchored and cropped keyframes), keeping peak VRAM to one tile. 'latent_upscale_param', 'temporal_split_param' and 'spatial_split_param' are optional - leave any unconnected to skip that stage (no upscale / single chunk / full-chunk sampling).",
+    "inputs": {
+      "model": {
+        "tooltip": "The diffusion model used to re-sample every chunk/tile (guider is built internally)."
+      },
+      "conditioning": {
+        "tooltip": "Conditioning used to generate this latent. Per chunk it is re-anchored in time; per tile its keyframes are spatially cropped; the frame-0 keyframe is pinned to the previous chunk's re-sampled frame."
+      },
+      "latent": {
+        "tooltip": "Denoised MiniMax H3 AV latent to enhance."
+      },
+      "noise": {
+        "tooltip": "Noise source; one noise tensor is generated per piece."
+      },
+      "sampler": {
+        "tooltip": "Sampler used for every chunk/tile."
+      },
+      "sigmas": {
+        "tooltip": "Sigma schedule used for every chunk/tile."
+      },
+      "negative": {
+        "tooltip": "Negative conditioning. When connected, a CFGGuider is used with the 'cfg' value; otherwise a basic guider (positive only)."
+      },
+      "cfg": {
+        "tooltip": "CFG scale used when 'negative' is connected."
+      },
+      "latent_upscale_param": {
+        "tooltip": "Output of 'MMH3 Latent Upscale with Model Params' (H3 3D upscaler) OR 'MMH3 Latent Upscale Params' (model-free interpolation). Leave unconnected to skip upscaling."
+      },
+      "temporal_split_param": {
+        "tooltip": "Output of 'MMH3 Temporal Split Params'. Leave unconnected to process the latent as a single chunk."
+      },
+      "spatial_split_param": {
+        "tooltip": "Output of 'MMH3 Spatial Split Params'. Leave unconnected to sample each chunk whole (no tiling)."
+      }
+    },
+    "outputs": {
+      "0": {
+        "tooltip": "Upscaled, re-sampled, stitched MiniMax H3 AV latent."
+      },
+      "1": {
+        "tooltip": "DEBUG ONLY. Per-chunk metadata: frame start/count, video/audio token ranges, upscale applied."
+      },
+      "2": {
+        "tooltip": "DEBUG ONLY. Per-chunk spatial grid metadata: offsets, tile extents, overlaps, stitching mode."
+      }
+    }
+  }
+}
