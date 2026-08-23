@@ -1,8 +1,8 @@
 {
   "id": "e3f2b845-8f2c-4b5a-9caf-eac1029d3e7e",
   "revision": 0,
-  "last_node_id": 169,
-  "last_link_id": 350,
+  "last_node_id": 171,
+  "last_link_id": 356,
   "nodes": [
     {
       "id": 115,
@@ -69,7 +69,7 @@
       "flags": {
         "collapsed": false
       },
-      "order": 32,
+      "order": 34,
       "mode": 0,
       "inputs": [
         {
@@ -112,7 +112,7 @@
       "flags": {
         "collapsed": false
       },
-      "order": 31,
+      "order": 33,
       "mode": 0,
       "inputs": [
         {
@@ -153,7 +153,7 @@
         60
       ],
       "flags": {},
-      "order": 27,
+      "order": 29,
       "mode": 0,
       "inputs": [
         {
@@ -194,7 +194,7 @@
         110
       ],
       "flags": {},
-      "order": 35,
+      "order": 37,
       "mode": 0,
       "inputs": [
         {
@@ -415,7 +415,7 @@
         370
       ],
       "flags": {},
-      "order": 23,
+      "order": 24,
       "mode": 0,
       "inputs": [
         {
@@ -619,7 +619,7 @@
         110
       ],
       "flags": {},
-      "order": 29,
+      "order": 31,
       "mode": 0,
       "inputs": [
         {
@@ -705,7 +705,7 @@
       "flags": {
         "collapsed": false
       },
-      "order": 36,
+      "order": 38,
       "mode": 0,
       "inputs": [
         {
@@ -748,7 +748,7 @@
       "flags": {
         "collapsed": false
       },
-      "order": 34,
+      "order": 36,
       "mode": 0,
       "inputs": [
         {
@@ -882,10 +882,10 @@
       ],
       "size": [
         230,
-        244.66666666666666
+        250
       ],
       "flags": {},
-      "order": 30,
+      "order": 32,
       "mode": 0,
       "inputs": [
         {
@@ -935,9 +935,7 @@
         "cnr_id": "comfy-core",
         "ver": "0.33.0",
         "Node name for S&R": "SamplerCustomAdvanced"
-      },
-      "widgets_values": [],
-      "widgets_values_named": {}
+      }
     },
     {
       "id": 151,
@@ -951,7 +949,7 @@
         390
       ],
       "flags": {},
-      "order": 24,
+      "order": 26,
       "mode": 0,
       "inputs": [
         {
@@ -1025,7 +1023,7 @@
           "widget": {
             "name": "width"
           },
-          "link": 338
+          "link": 351
         },
         {
           "name": "height",
@@ -1033,7 +1031,7 @@
           "widget": {
             "name": "height"
           },
-          "link": 340
+          "link": 354
         },
         {
           "name": "length",
@@ -1133,7 +1131,7 @@
         160
       ],
       "flags": {},
-      "order": 22,
+      "order": 27,
       "mode": 0,
       "inputs": [
         {
@@ -1142,7 +1140,7 @@
           "widget": {
             "name": "width"
           },
-          "link": 339
+          "link": 352
         },
         {
           "name": "height",
@@ -1150,7 +1148,7 @@
           "widget": {
             "name": "height"
           },
-          "link": 341
+          "link": 355
         }
       ],
       "outputs": [
@@ -1163,6 +1161,8 @@
         }
       ],
       "properties": {
+        "aux_id": "bbaudio-2025/Comfyui-MMH3-UltimateUpscale",
+        "ver": "26cf738a33bbd497299663c26c6dfc8f26d5c2ee",
         "Node name for S&R": "MMH3LatentUpscaleWithModelParams"
       },
       "widgets_values": [
@@ -1181,86 +1181,6 @@
       }
     },
     {
-      "id": 164,
-      "type": "INTConstant",
-      "pos": [
-        1170,
-        5530
-      ],
-      "size": [
-        210,
-        60
-      ],
-      "flags": {},
-      "order": 9,
-      "mode": 0,
-      "inputs": [],
-      "outputs": [
-        {
-          "name": "value",
-          "type": "INT",
-          "links": [
-            338,
-            339
-          ]
-        }
-      ],
-      "title": "Upscale Width",
-      "properties": {
-        "cnr_id": "comfyui-kjnodes",
-        "ver": "60cd6bc1870db94c6eeb05fbe455147a8e91c4e9",
-        "Node name for S&R": "INTConstant"
-      },
-      "widgets_values": [
-        1920
-      ],
-      "widgets_values_named": {
-        "value": 1920
-      },
-      "color": "#1b4669",
-      "bgcolor": "#29699c"
-    },
-    {
-      "id": 165,
-      "type": "INTConstant",
-      "pos": [
-        1170,
-        5650
-      ],
-      "size": [
-        210,
-        60
-      ],
-      "flags": {},
-      "order": 10,
-      "mode": 0,
-      "inputs": [],
-      "outputs": [
-        {
-          "name": "value",
-          "type": "INT",
-          "links": [
-            340,
-            341
-          ]
-        }
-      ],
-      "title": "Upscale Height",
-      "properties": {
-        "cnr_id": "comfyui-kjnodes",
-        "ver": "60cd6bc1870db94c6eeb05fbe455147a8e91c4e9",
-        "Node name for S&R": "INTConstant"
-      },
-      "widgets_values": [
-        1088
-      ],
-      "widgets_values_named": {
-        "value": 1088
-      },
-      "color": "#1b4669",
-      "bgcolor": "#29699c"
-    },
-    {
       "id": 124,
       "type": "BasicScheduler",
       "pos": [
@@ -1272,7 +1192,7 @@
         130
       ],
       "flags": {},
-      "order": 28,
+      "order": 30,
       "mode": 0,
       "inputs": [
         {
@@ -1318,7 +1238,7 @@
         520
       ],
       "flags": {},
-      "order": 11,
+      "order": 9,
       "mode": 0,
       "inputs": [],
       "outputs": [],
@@ -1345,7 +1265,7 @@
         110
       ],
       "flags": {},
-      "order": 12,
+      "order": 10,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -1358,6 +1278,8 @@
         }
       ],
       "properties": {
+        "aux_id": "bbaudio-2025/Comfyui-MMH3-UltimateUpscale",
+        "ver": "26cf738a33bbd497299663c26c6dfc8f26d5c2ee",
         "Node name for S&R": "MMH3TemporalSplitParams"
       },
       "widgets_values": [
@@ -1372,56 +1294,6 @@
       }
     },
     {
-      "id": 159,
-      "type": "MMH3SpatialSplitParams",
-      "pos": [
-        1440,
-        5700
-      ],
-      "size": [
-        320,
-        250
-      ],
-      "flags": {},
-      "order": 13,
-      "mode": 0,
-      "inputs": [],
-      "outputs": [
-        {
-          "name": "spatial_split_param",
-          "type": "H3_SPATIAL_PARAM",
-          "links": [
-            330
-          ]
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "MMH3SpatialSplitParams"
-      },
-      "widgets_values": [
-        1024,
-        640,
-        128,
-        128,
-        32,
-        32,
-        256,
-        "earlier",
-        "linear"
-      ],
-      "widgets_values_named": {
-        "tile_width": 1024,
-        "tile_height": 640,
-        "spatial_w_overlap": 128,
-        "spatial_h_overlap": 128,
-        "fade_width": 32,
-        "fade_height": 32,
-        "min_tile_size": 256,
-        "overlap_mode": "earlier",
-        "overlap_blend": "linear"
-      }
-    },
-    {
       "id": 162,
       "type": "CreateVideo",
       "pos": [
@@ -1433,7 +1305,7 @@
         110
       ],
       "flags": {},
-      "order": 38,
+      "order": 40,
       "mode": 0,
       "inputs": [
         {
@@ -1483,7 +1355,7 @@
         390
       ],
       "flags": {},
-      "order": 14,
+      "order": 11,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -1523,7 +1395,7 @@
         90
       ],
       "flags": {},
-      "order": 15,
+      "order": 12,
       "mode": 0,
       "inputs": [],
       "outputs": [],
@@ -1546,10 +1418,10 @@
       ],
       "size": [
         260,
-        387
+        390
       ],
       "flags": {},
-      "order": 33,
+      "order": 35,
       "mode": 0,
       "inputs": [
         {
@@ -1627,6 +1499,8 @@
         }
       ],
       "properties": {
+        "aux_id": "bbaudio-2025/Comfyui-MMH3-UltimateUpscale",
+        "ver": "26cf738a33bbd497299663c26c6dfc8f26d5c2ee",
         "Node name for S&R": "MMH3UltimateUpscale"
       },
       "widgets_values": [
@@ -1648,7 +1522,7 @@
         70
       ],
       "flags": {},
-      "order": 16,
+      "order": 13,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -1684,7 +1558,7 @@
         90
       ],
       "flags": {},
-      "order": 17,
+      "order": 14,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -1765,10 +1639,10 @@
       ],
       "size": [
         670,
-        470.22222222222223
+        110
       ],
       "flags": {},
-      "order": 37,
+      "order": 39,
       "mode": 0,
       "inputs": [
         {
@@ -1812,7 +1686,7 @@
         330
       ],
       "flags": {},
-      "order": 18,
+      "order": 15,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -1853,10 +1727,10 @@
       ],
       "size": [
         670,
-        477.6666666666667
+        110
       ],
       "flags": {},
-      "order": 39,
+      "order": 41,
       "mode": 0,
       "inputs": [
         {
@@ -1889,52 +1763,6 @@
       }
     },
     {
-      "id": 169,
-      "type": "MiniMaxH3SigmaShift",
-      "pos": [
-        -760,
-        4700
-      ],
-      "size": [
-        250,
-        90
-      ],
-      "flags": {},
-      "order": 25,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "model",
-          "type": "MODEL",
-          "link": 349
-        }
-      ],
-      "outputs": [
-        {
-          "name": "MODEL",
-          "type": "MODEL",
-          "links": [
-            350
-          ]
-        }
-      ],
-      "properties": {
-        "cnr_id": "comfy-core",
-        "ver": "0.33.0",
-        "Node name for S&R": "MiniMaxH3SigmaShift"
-      },
-      "widgets_values": [
-        6,
-        3
-      ],
-      "widgets_values_named": {
-        "shift_video": 6,
-        "shift_audio": 3
-      },
-      "color": "#223",
-      "bgcolor": "#335"
-    },
-    {
       "id": 143,
       "type": "ModelAttentionBackend",
       "pos": [
@@ -1946,7 +1774,7 @@
         60
       ],
       "flags": {},
-      "order": 26,
+      "order": 28,
       "mode": 0,
       "inputs": [
         {
@@ -1993,7 +1821,7 @@
         150
       ],
       "flags": {},
-      "order": 19,
+      "order": 16,
       "mode": 0,
       "inputs": [],
       "outputs": [],
@@ -2007,6 +1835,310 @@
       },
       "color": "#432",
       "bgcolor": "#653"
+    },
+    {
+      "id": 164,
+      "type": "INTConstant",
+      "pos": [
+        1170,
+        5510
+      ],
+      "size": [
+        210,
+        60
+      ],
+      "flags": {
+        "collapsed": false
+      },
+      "order": 17,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "value",
+          "type": "INT",
+          "links": [
+            353
+          ]
+        }
+      ],
+      "title": "Upscale Width",
+      "properties": {
+        "cnr_id": "comfyui-kjnodes",
+        "ver": "60cd6bc1870db94c6eeb05fbe455147a8e91c4e9",
+        "Node name for S&R": "INTConstant"
+      },
+      "widgets_values": [
+        1920
+      ],
+      "widgets_values_named": {
+        "value": 1920
+      },
+      "color": "#1b4669",
+      "bgcolor": "#29699c"
+    },
+    {
+      "id": 170,
+      "type": "ComfyMathExpression",
+      "pos": [
+        1170,
+        5630
+      ],
+      "size": [
+        210,
+        130
+      ],
+      "flags": {
+        "collapsed": true
+      },
+      "order": 22,
+      "mode": 0,
+      "inputs": [
+        {
+          "label": "a",
+          "name": "values.a",
+          "type": "FLOAT,INT,BOOLEAN",
+          "link": 353
+        },
+        {
+          "label": "b",
+          "name": "values.b",
+          "shape": 7,
+          "type": "FLOAT,INT,BOOLEAN",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "FLOAT",
+          "type": "FLOAT",
+          "links": null
+        },
+        {
+          "name": "INT",
+          "type": "INT",
+          "links": [
+            351,
+            352
+          ]
+        },
+        {
+          "name": "BOOL",
+          "type": "BOOLEAN",
+          "links": null
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.33.0",
+        "Node name for S&R": "ComfyMathExpression"
+      },
+      "widgets_values": [
+        "a//32*32"
+      ],
+      "widgets_values_named": {
+        "expression": "a//32*32"
+      }
+    },
+    {
+      "id": 165,
+      "type": "INTConstant",
+      "pos": [
+        1170,
+        5690
+      ],
+      "size": [
+        210,
+        60
+      ],
+      "flags": {},
+      "order": 18,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "value",
+          "type": "INT",
+          "links": [
+            356
+          ]
+        }
+      ],
+      "title": "Upscale Height",
+      "properties": {
+        "cnr_id": "comfyui-kjnodes",
+        "ver": "60cd6bc1870db94c6eeb05fbe455147a8e91c4e9",
+        "Node name for S&R": "INTConstant"
+      },
+      "widgets_values": [
+        1088
+      ],
+      "widgets_values_named": {
+        "value": 1088
+      },
+      "color": "#1b4669",
+      "bgcolor": "#29699c"
+    },
+    {
+      "id": 171,
+      "type": "ComfyMathExpression",
+      "pos": [
+        1170,
+        5810
+      ],
+      "size": [
+        210,
+        130
+      ],
+      "flags": {
+        "collapsed": true
+      },
+      "order": 23,
+      "mode": 0,
+      "inputs": [
+        {
+          "label": "a",
+          "name": "values.a",
+          "type": "FLOAT,INT,BOOLEAN",
+          "link": 356
+        },
+        {
+          "label": "b",
+          "name": "values.b",
+          "shape": 7,
+          "type": "FLOAT,INT,BOOLEAN",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "FLOAT",
+          "type": "FLOAT",
+          "links": null
+        },
+        {
+          "name": "INT",
+          "type": "INT",
+          "links": [
+            354,
+            355
+          ]
+        },
+        {
+          "name": "BOOL",
+          "type": "BOOLEAN",
+          "links": null
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.33.0",
+        "Node name for S&R": "ComfyMathExpression"
+      },
+      "widgets_values": [
+        "a//32*32"
+      ],
+      "widgets_values_named": {
+        "expression": "a//32*32"
+      }
+    },
+    {
+      "id": 169,
+      "type": "MiniMaxH3SigmaShift",
+      "pos": [
+        -760,
+        4700
+      ],
+      "size": [
+        250,
+        90
+      ],
+      "flags": {},
+      "order": 25,
+      "mode": 4,
+      "inputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 349
+        }
+      ],
+      "outputs": [
+        {
+          "name": "MODEL",
+          "type": "MODEL",
+          "links": [
+            350
+          ]
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.33.0",
+        "Node name for S&R": "MiniMaxH3SigmaShift"
+      },
+      "widgets_values": [
+        6,
+        3
+      ],
+      "widgets_values_named": {
+        "shift_video": 6,
+        "shift_audio": 3
+      },
+      "color": "#223",
+      "bgcolor": "#335"
+    },
+    {
+      "id": 159,
+      "type": "MMH3SpatialSplitParams",
+      "pos": [
+        1440,
+        5700
+      ],
+      "size": [
+        320,
+        250
+      ],
+      "flags": {},
+      "order": 19,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "spatial_split_param",
+          "type": "H3_SPATIAL_PARAM",
+          "links": [
+            330
+          ]
+        }
+      ],
+      "properties": {
+        "aux_id": "bbaudio-2025/Comfyui-MMH3-UltimateUpscale",
+        "ver": "26cf738a33bbd497299663c26c6dfc8f26d5c2ee",
+        "Node name for S&R": "MMH3SpatialSplitParams"
+      },
+      "widgets_values": [
+        864,
+        480,
+        128,
+        128,
+        32,
+        32,
+        256,
+        "earlier",
+        "linear"
+      ],
+      "widgets_values_named": {
+        "tile_width": 864,
+        "tile_height": 480,
+        "spatial_w_overlap": 128,
+        "spatial_h_overlap": 128,
+        "fade_width": 32,
+        "fade_height": 32,
+        "min_tile_size": 256,
+        "overlap_mode": "earlier",
+        "overlap_blend": "linear"
+      }
     }
   ],
   "links": [
@@ -2395,38 +2527,6 @@
       "VIDEO"
     ],
     [
-      338,
-      164,
-      0,
-      151,
-      10,
-      "INT"
-    ],
-    [
-      339,
-      164,
-      0,
-      157,
-      0,
-      "INT"
-    ],
-    [
-      340,
-      165,
-      0,
-      151,
-      11,
-      "INT"
-    ],
-    [
-      341,
-      165,
-      0,
-      157,
-      1,
-      "INT"
-    ],
-    [
       347,
       143,
       0,
@@ -2457,6 +2557,54 @@
       143,
       0,
       "MODEL"
+    ],
+    [
+      351,
+      170,
+      1,
+      151,
+      10,
+      "INT"
+    ],
+    [
+      352,
+      170,
+      1,
+      157,
+      0,
+      "INT"
+    ],
+    [
+      353,
+      164,
+      0,
+      170,
+      0,
+      "INT"
+    ],
+    [
+      354,
+      171,
+      1,
+      151,
+      11,
+      "INT"
+    ],
+    [
+      355,
+      171,
+      1,
+      157,
+      1,
+      "INT"
+    ],
+    [
+      356,
+      165,
+      0,
+      171,
+      0,
+      "INT"
     ]
   ],
   "groups": [
@@ -2560,10 +2708,10 @@
   "config": {},
   "extra": {
     "ds": {
-      "scale": 0.5730855330117232,
+      "scale": 0.5730855330117317,
       "offset": [
-        2084.1204821703327,
-        -4508.264280312571
+        2125.0057630945826,
+        -4091.3518238580355
       ]
     },
     "frontendVersion": "1.49.6",
