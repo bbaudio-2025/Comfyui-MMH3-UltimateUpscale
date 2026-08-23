@@ -1053,7 +1053,7 @@ class MMH3TemporalSplitParams(io.ComfyNode):
                 io.Int.Input("chunk_length", default=136, min=17, max=100000, step=17,
                              tooltip="Target pixel frames per chunk (at 24 fps). MUST be a multiple of 17 (one keyframe grid step). 136 = ~5.7s, 153 = ~6.4s."),
                 io.Int.Input("temporal_overlap", default=17, min=0, max=100000, step=17,
-                             tooltip="Pixel frames of overlap between consecutive chunks. MUST be a multiple of 17; recommended 17."),
+                             tooltip="Pixel frames of overlap between consecutive chunks. MUST be a multiple of 17; recommended 17. Must be smaller than chunk_length."),
                 io.Float.Input("anchor_strength", default=0.999, min=0.0, max=1.0, step=0.01,
                                tooltip="How much of the previous chunk's re-sampled boundary the frozen frame-0 anchor keeps: 1.0 = exact content, 0.999 = model default, 0.0 = no anchoring."),
             ],
@@ -1069,6 +1069,8 @@ class MMH3TemporalSplitParams(io.ComfyNode):
             raise ValueError(f"chunk_length must be a multiple of 17 (the model's keyframe grid step); got {chunk_length}")
         if temporal_overlap % 17 != 0:
             raise ValueError(f"temporal_overlap must be a multiple of 17 (the model's keyframe grid step); got {temporal_overlap}")
+        if temporal_overlap >= chunk_length:
+            raise ValueError("temporal_overlap must be smaller than chunk_length")
         param = {
             "chunk_length": chunk_length,
             "temporal_overlap": temporal_overlap,
