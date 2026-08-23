@@ -2,7 +2,7 @@
 [project]
 name = "Comfyui-MMH3-UltimateUpscale"
 description = "Upscale long, high-resolution MiniMax H3 video on a VRAM-limited GPU in a single node."
-version = "0.0.0"
+version = "0.0.1"
 license = { file = "LICENSE.txt" }
 dependencies  = [] 
 
