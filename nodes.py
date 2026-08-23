@@ -198,25 +198,31 @@ def spatial_fade_mask(tile_h, tile_w, ol_h, ol_w, done_top, done_left, fade_h=0,
 
     Every tile is sampled at its true extent (no padding), so the mask only
     freezes the overlap strips shared with an already-processed neighbor
-    (done_top / done_left). Those strips are frozen by fade_width/fade_height
-    ALONE: 0 (default) = whole strip frozen (keeps the neighbor's content),
-    otherwise only the first fade latent units fade 0->1 toward the tile
-    interior. The two axes use independent fade widths."""
+    (done_top / done_left). Each overlap strip splits into a FROZEN segment on
+    the seam side (mask = 0, keeps the neighbour's content) and a FADE segment
+    on the interior side (mask rises 0 -> 1 toward the tile interior).
+    fade_width/fade_height is the FADE segment length; the frozen segment takes
+    the rest of the overlap strip (ol - fade). 0 (default) = whole strip
+    frozen. The two axes use independent fade widths."""
     mask = torch.ones(tile_h, tile_w, dtype=torch.float32)
     if done_left and ol_w > 0:
         if fade_w == 0:
             mask[:, :ol_w] = 0.0
         else:
             f = min(fade_w, ol_w)
+            frozen_w = ol_w - f
             w = torch.linspace(0.0, 1.0, f)
-            mask[:, :f] = torch.minimum(mask[:, :f], w[None, :])
+            mask[:, :frozen_w] = 0.0
+            mask[:, frozen_w:ol_w] = torch.minimum(mask[:, frozen_w:ol_w], w[None, :])
     if done_top and ol_h > 0:
         if fade_h == 0:
             mask[:ol_h, :] = 0.0
         else:
             f = min(fade_h, ol_h)
+            frozen_h = ol_h - f
             w = torch.linspace(0.0, 1.0, f)
-            mask[:f, :] = torch.minimum(mask[:f, :], w[:, None])
+            mask[:frozen_h, :] = 0.0
+            mask[frozen_h:ol_h, :] = torch.minimum(mask[frozen_h:ol_h, :], w[:, None])
     return mask
 
 
@@ -234,7 +240,7 @@ def blend_weights(t, overlap_blend, overlap_mode):
         step = t * t * (3.0 - 2.0 * t)
     else:
         step = t
-    if overlap_mode == "later":
+    if overlap_mode == "earlier":
         return step
     return 1.0 - step
 
@@ -1104,9 +1110,9 @@ class MMH3SpatialSplitParams(io.ComfyNode):
                 io.Int.Input("spatial_h_overlap", default=128, min=0, max=100000, step=32,
                              tooltip="Vertical overlap in PIXELS between neighbouring tiles. Must be a multiple of 32 and smaller than the tile height."),
                 io.Int.Input("fade_width", default=32, min=0, max=100000, step=32,
-                             tooltip="Width (in latent pixels) of the frozen->free gradient at the shared seam: the first fade_width pixels of the overlap band transition from frozen (keep the neighbour's content) to freely re-sampled; the rest of the overlap band is re-sampled. Default 32. Set to 0 to freeze the entire overlap strip (keep the neighbour's content)."),
+                             tooltip="Width in PIXELS of the FADE segment (mask 0->1) at the interior edge of the overlap band. The overlap band splits into a FROZEN segment (seam side, mask=0, keeps the neighbour's content) + this FADE segment (interior side). fade_width sets the fade length; the frozen segment takes the rest (overlap - fade). Default 32. Set to 0 to freeze the entire overlap strip."),
                 io.Int.Input("fade_height", default=32, min=0, max=100000, step=32,
-                             tooltip="Height (in latent pixels) of the frozen->free gradient at the shared seam: the first fade_height pixels of the overlap band transition from frozen (keep the neighbour's content) to freely re-sampled; the rest of the overlap band is re-sampled. Default 32. Set to 0 to freeze the entire overlap strip (keep the neighbour's content)."),
+                             tooltip="Height in PIXELS of the FADE segment (mask 0->1) at the interior edge of the overlap band. The overlap band splits into a FROZEN segment (seam side, mask=0, keeps the neighbour's content) + this FADE segment (interior side). fade_height sets the fade length; the frozen segment takes the rest (overlap - fade). Default 32. Set to 0 to freeze the entire overlap strip."),
                 io.Int.Input("min_tile_size", default=256, min=0, max=100000, step=32,
                              tooltip="Minimum PIXEL size of edge tiles. If a leftover edge tile would be smaller, the last tile is pulled back until it reaches at least this size; the seam overlap then grows and is blended over its full width. 256 (default) keeps small leftover tiles as-is. Must not exceed the tile size."),
                 io.Combo.Input("overlap_mode", options=["earlier", "later"], default="earlier",
