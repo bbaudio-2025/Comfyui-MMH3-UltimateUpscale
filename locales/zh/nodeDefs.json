@@ -1,0 +1,182 @@
+{
+  "MMH3LatentUpscaleWithModelParams": {
+    "display_name": "MMH3 潜空间放大（模型参数）",
+    "description": "为 'MMH3 Ultimate Upscale' 节点打包 H3 3D 潜空间放大设置。使用 latent_upscale_models 文件夹中的 minimax_h3_latent_upscaler_3d 检查点（非标准 LatentUpscale 加载器——H3 权重与其支持的架构不匹配）。",
+    "inputs": {
+      "model_name": {
+        "name": "模型名称",
+        "tooltip": "latent_upscale_models 文件夹中的 H3 潜空间放大模型文件（如 minimax_h3_latent_upscaler_3d_*.safetensors）。加载非 H3 放大模型可能报错。"
+      },
+      "width": {
+        "name": "宽度",
+        "tooltip": "放大后整体画面（每帧）的目标像素宽度。吸附为 32 的倍数（即 H3 放大器的必需网格）。必须与 conditioning 的生成尺寸一致。"
+      },
+      "height": {
+        "name": "高度",
+        "tooltip": "放大后整体画面（每帧）的目标像素高度。吸附为 32 的倍数（即 H3 放大器的必需网格）。必须与 conditioning 的生成尺寸一致。"
+      }
+    },
+    "outputs": {
+      "0": {
+        "tooltip": "供 'MMH3 Ultimate Upscale' 使用的放大设置。"
+      }
+    }
+  },
+  "MMH3LatentUpscaleParams": {
+    "display_name": "MMH3 潜空间放大参数",
+    "description": "为 'MMH3 Ultimate Upscale' 节点打包免模型潜空间放大设置。分块的视频潜变量通过插值进行空间缩放（音频不变）——不加载 H3 放大模型。目标尺寸必须与 conditioning 的生成尺寸一致。参考：ComfyUI 的 'Upscale Latent'。",
+    "inputs": {
+      "method": {
+        "name": "插值方式",
+        "tooltip": "用于缩放视频潜变量空间 HxW 的插值方式（与 Upscale Latent 相同）。"
+      },
+      "width": {
+        "name": "宽度",
+        "tooltip": "放大后整体画面（每帧）的目标像素宽度。吸附为 32 的倍数。必须与 conditioning 的生成尺寸一致。"
+      },
+      "height": {
+        "name": "高度",
+        "tooltip": "放大后整体画面（每帧）的目标像素高度。吸附为 32 的倍数。必须与 conditioning 的生成尺寸一致。"
+      }
+    },
+    "outputs": {
+      "0": {
+        "tooltip": "供 'MMH3 Ultimate Upscale' 使用的免模型放大设置。"
+      }
+    }
+  },
+  "MMH3TemporalSplitParams": {
+    "display_name": "MMH3 时间分块参数",
+    "description": "为 'MMH3 Ultimate Upscale' 节点打包时间分块设置：如何将输入潜变量切分为有重叠的时间分块（外层循环），以及接缝如何锚定。",
+    "inputs": {
+      "chunk_length": {
+        "name": "分块长度",
+        "tooltip": "每个分块的目标像素帧数（按 24 fps 计）。必须是 17 的倍数（一个关键帧网格步长）。136 ≈ 5.7 秒，153 ≈ 6.4 秒。"
+      },
+      "temporal_overlap": {
+        "name": "时间重叠",
+        "tooltip": "相邻分块之间重叠的像素帧数。必须是 17 的倍数；建议为 17。"
+      },
+      "anchor_strength": {
+        "name": "锚定强度",
+        "tooltip": "冻结的帧 0 锚点保留上一分块重采样边界的程度：1.0 = 完全保留内容，0.999 = 模型默认，0.0 = 不锚定。"
+      }
+    },
+    "outputs": {
+      "0": {
+        "tooltip": "供 'MMH3 Ultimate Upscale' 使用的时间分块设置。"
+      }
+    }
+  },
+  "MMH3SpatialSplitParams": {
+    "display_name": "MMH3 空间分块参数",
+    "description": "为 'MMH3 Ultimate Upscale' 节点打包空间分块（瓦片）设置：瓦片尺寸、各轴重叠与渐变、以及接缝拼接规则（内层循环）。",
+    "inputs": {
+      "tile_width": {
+        "name": "瓦片宽度",
+        "tooltip": "（放大后）分块分辨率下的瓦片宽度（像素）。必须是 32 的倍数。"
+      },
+      "tile_height": {
+        "name": "瓦片高度",
+        "tooltip": "（放大后）分块分辨率下的瓦片高度（像素）。必须是 32 的倍数。"
+      },
+      "spatial_w_overlap": {
+        "name": "水平重叠",
+        "tooltip": "相邻瓦片之间的水平重叠（像素）。必须是 32 的倍数且小于瓦片宽度。"
+      },
+      "spatial_h_overlap": {
+        "name": "垂直重叠",
+        "tooltip": "相邻瓦片之间的垂直重叠（像素）。必须是 32 的倍数且小于瓦片高度。"
+      },
+      "fade_width": {
+        "name": "水平渐变",
+        "tooltip": "重叠带在共享接缝处的冻结→自由渐变宽度（像素/潜变量单位）：重叠带最靠接缝的 fade_width 像素从冻结（保留邻居内容）渐变到自由重采样；重叠带其余部分自由重采样。默认 32。设为 0 则整个重叠带完全冻结（保留邻居内容）。"
+      },
+      "fade_height": {
+        "name": "垂直渐变",
+        "tooltip": "重叠带在共享接缝处的冻结→自由渐变高度（像素/潜变量单位）：重叠带最靠接缝的 fade_height 像素从冻结（保留邻居内容）渐变到自由重采样；重叠带其余部分自由重采样。默认 32。设为 0 则整个重叠带完全冻结（保留邻居内容）。"
+      },
+      "min_tile_size": {
+        "name": "最小瓦片尺寸",
+        "tooltip": "边缘瓦片的最小像素尺寸。如果剩余的边缘瓦片会更小，则最后一个瓦片会向后拉，直到至少达到此尺寸；此时接缝重叠增大并在其整个宽度上混合。默认 256 保持较小的剩余瓦片不变。不得超过瓦片尺寸。"
+      },
+      "overlap_mode": {
+        "name": "重叠模式",
+        "tooltip": "拼接时每个共享重叠带由谁取胜。'earlier'（默认）：已拼接的内容取胜。'later'：重新采样的瓦片取胜。不影响噪声遮罩。"
+      },
+      "overlap_blend": {
+        "name": "重叠混合",
+        "tooltip": "拼接时重叠带的过渡方式：linear 交叉淡入淡出（默认）、smoothstep（缓动）、overwrite（整个带取自 overlap_mode 一侧）、midpoint（在带的中间硬切换）。"
+      }
+    },
+    "outputs": {
+      "0": {
+        "tooltip": "供 'MMH3 Ultimate Upscale' 使用的空间分块设置。"
+      }
+    }
+  },
+  "MMH3UltimateUpscale": {
+    "display_name": "MMH3 终极放大",
+    "description": "在单个节点中通过完整自动管线重新采样已去噪的 MiniMax H3 AV 潜变量：时间分块（外层循环）-> 潜空间放大（逐分块）-> 空间分块（内层循环）-> 带预览的逐瓦片采样 -> 空间拼接 -> 时间拼接。每个分块/瓦片使用由逐块 conditioning（重新锚定并裁剪关键帧）构建的全新引导器进行采样，将峰值显存控制在单个瓦片。'latent_upscale_param'、'temporal_split_param' 和 'spatial_split_param' 均为可选——保持任意未连接即可跳过该阶段（不放大 / 单分块 / 整块采样）。",
+    "inputs": {
+      "model": {
+        "name": "模型",
+        "tooltip": "用于重新采样每个分块/瓦片的扩散模型（引导器在内部构建）。"
+      },
+      "conditioning": {
+        "name": "条件",
+        "tooltip": "用于生成此潜变量的 conditioning。每个分块在时间上重新锚定；每个瓦片裁剪其关键帧的空间范围；帧 0 关键帧固定为上一分块重采样后的帧。"
+      },
+      "latent": {
+        "name": "潜变量",
+        "tooltip": "待增强的已去噪 MiniMax H3 AV 潜变量。"
+      },
+      "noise": {
+        "name": "噪声",
+        "tooltip": "噪声源；每个分块生成一张噪声张量。"
+      },
+      "sampler": {
+        "name": "采样器",
+        "tooltip": "每个分块/瓦片使用的采样器。"
+      },
+      "sigmas": {
+        "name": "Sigma",
+        "tooltip": "每个分块/瓦片使用的 sigma 调度。"
+      },
+      "negative": {
+        "name": "负向条件",
+        "tooltip": "负向 conditioning。连接时，使用带 'cfg' 值的 CFGGuider；否则使用基础引导器（仅正向）。"
+      },
+      "cfg": {
+        "name": "CFG",
+        "tooltip": "连接 'negative' 时使用的 CFG 强度。"
+      },
+      "latent_upscale_param": {
+        "name": "潜空间放大参数",
+        "tooltip": "'MMH3 Latent Upscale with Model Params'（H3 3D 放大器）或 'MMH3 Latent Upscale Params'（免模型插值）的输出。保持未连接可跳过放大。"
+      },
+      "temporal_split_param": {
+        "name": "时间分块参数",
+        "tooltip": "'MMH3 Temporal Split Params' 的输出。保持未连接则将潜变量作为单个分块处理。"
+      },
+      "spatial_split_param": {
+        "name": "空间分块参数",
+        "tooltip": "'MMH3 Spatial Split Params' 的输出。保持未连接则对每个分块整体采样（不切分瓦片）。"
+      }
+    },
+    "outputs": {
+      "0": {
+        "name": "潜变量",
+        "tooltip": "放大、重采样、拼接后的 MiniMax H3 AV 潜变量。"
+      },
+      "1": {
+        "name": "分块信息",
+        "tooltip": "仅供调试。逐分块元数据：帧起始/数量、视频/音频 token 范围、是否已放大。"
+      },
+      "2": {
+        "name": "瓦片信息",
+        "tooltip": "仅供调试。逐分块空间网格元数据：偏移、瓦片范围、重叠、拼接模式。"
+      }
+    }
+  }
+}
