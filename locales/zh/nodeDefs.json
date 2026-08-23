@@ -90,11 +90,11 @@
       },
       "fade_width": {
         "name": "水平渐变",
-        "tooltip": "重叠带在共享接缝处的冻结→自由渐变宽度（像素/潜变量单位）：重叠带最靠接缝的 fade_width 像素从冻结（保留邻居内容）渐变到自由重采样；重叠带其余部分自由重采样。默认 32。设为 0 则整个重叠带完全冻结（保留邻居内容）。"
+        "tooltip": "overlap 带 interior 侧 FADE 段（mask 0→1）的宽度（像素）。overlap 带分为冻结段（seam 侧，mask=0，保留邻居内容）+ 此 FADE 段（interior 侧）。fade_width 设定 FADE 段长度，冻结段占剩余部分（overlap - fade）。默认 32。设为 0 则整个 overlap 带完全冻结（保留邻居内容）。"
       },
       "fade_height": {
         "name": "垂直渐变",
-        "tooltip": "重叠带在共享接缝处的冻结→自由渐变高度（像素/潜变量单位）：重叠带最靠接缝的 fade_height 像素从冻结（保留邻居内容）渐变到自由重采样；重叠带其余部分自由重采样。默认 32。设为 0 则整个重叠带完全冻结（保留邻居内容）。"
+        "tooltip": "overlap 带 interior 侧 FADE 段（mask 0→1）的高度（像素）。overlap 带分为冻结段（seam 侧，mask=0，保留邻居内容）+ 此 FADE 段（interior 侧）。fade_height 设定 FADE 段长度，冻结段占剩余部分（overlap - fade）。默认 32。设为 0 则整个 overlap 带完全冻结（保留邻居内容）。"
       },
       "min_tile_size": {
         "name": "最小瓦片尺寸",
