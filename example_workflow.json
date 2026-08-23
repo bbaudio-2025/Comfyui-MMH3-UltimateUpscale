@@ -1,8 +1,8 @@
 {
   "id": "e3f2b845-8f2c-4b5a-9caf-eac1029d3e7e",
   "revision": 0,
-  "last_node_id": 171,
-  "last_link_id": 356,
+  "last_node_id": 172,
+  "last_link_id": 359,
   "nodes": [
     {
       "id": 115,
@@ -69,7 +69,7 @@
       "flags": {
         "collapsed": false
       },
-      "order": 34,
+      "order": 35,
       "mode": 0,
       "inputs": [
         {
@@ -112,7 +112,7 @@
       "flags": {
         "collapsed": false
       },
-      "order": 33,
+      "order": 34,
       "mode": 0,
       "inputs": [
         {
@@ -194,7 +194,7 @@
         110
       ],
       "flags": {},
-      "order": 37,
+      "order": 38,
       "mode": 0,
       "inputs": [
         {
@@ -619,13 +619,13 @@
         110
       ],
       "flags": {},
-      "order": 31,
+      "order": 33,
       "mode": 0,
       "inputs": [
         {
           "name": "model",
           "type": "MODEL",
-          "link": 348
+          "link": 358
         }
       ],
       "outputs": [
@@ -705,7 +705,7 @@
       "flags": {
         "collapsed": false
       },
-      "order": 38,
+      "order": 39,
       "mode": 0,
       "inputs": [
         {
@@ -938,152 +938,6 @@
       }
     },
     {
-      "id": 151,
-      "type": "MiniMaxH3ReferenceToVideo",
-      "pos": [
-        1170,
-        5060
-      ],
-      "size": [
-        250,
-        390
-      ],
-      "flags": {},
-      "order": 26,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "clip",
-          "type": "CLIP",
-          "link": 305
-        },
-        {
-          "name": "vae",
-          "type": "VAE",
-          "link": 306
-        },
-        {
-          "name": "audio_vae",
-          "type": "VAE",
-          "link": 307
-        },
-        {
-          "label": "ref_image_0",
-          "name": "ref_images.ref_image_0",
-          "shape": 7,
-          "type": "IMAGE",
-          "link": 308
-        },
-        {
-          "label": "ref_image_1",
-          "name": "ref_images.ref_image_1",
-          "shape": 7,
-          "type": "IMAGE",
-          "link": 313
-        },
-        {
-          "label": "ref_image_2",
-          "name": "ref_images.ref_image_2",
-          "shape": 7,
-          "type": "IMAGE",
-          "link": null
-        },
-        {
-          "label": "ref_video_0",
-          "name": "ref_videos.ref_video_0",
-          "shape": 7,
-          "type": "IMAGE",
-          "link": null
-        },
-        {
-          "label": "ref_video_audio_0",
-          "name": "ref_video_audios.ref_video_audio_0",
-          "shape": 7,
-          "type": "AUDIO",
-          "link": null
-        },
-        {
-          "label": "ref_audio_0",
-          "name": "ref_audios.ref_audio_0",
-          "shape": 7,
-          "type": "AUDIO",
-          "link": null
-        },
-        {
-          "name": "prompt",
-          "type": "STRING",
-          "widget": {
-            "name": "prompt"
-          },
-          "link": 314
-        },
-        {
-          "name": "width",
-          "type": "INT",
-          "widget": {
-            "name": "width"
-          },
-          "link": 351
-        },
-        {
-          "name": "height",
-          "type": "INT",
-          "widget": {
-            "name": "height"
-          },
-          "link": 354
-        },
-        {
-          "name": "length",
-          "type": "INT",
-          "widget": {
-            "name": "length"
-          },
-          "link": 315
-        },
-        {
-          "label": "ref_video_1",
-          "name": "ref_videos.ref_video_1",
-          "shape": 7,
-          "type": "IMAGE",
-          "link": null
-        }
-      ],
-      "outputs": [
-        {
-          "name": "positive",
-          "type": "CONDITIONING",
-          "links": [
-            320
-          ]
-        },
-        {
-          "name": "LATENT",
-          "type": "LATENT",
-          "links": null
-        }
-      ],
-      "properties": {
-        "cnr_id": "comfy-core",
-        "ver": "0.33.0",
-        "Node name for S&R": "MiniMaxH3ReferenceToVideo"
-      },
-      "widgets_values": [
-        "",
-        1344,
-        768,
-        124,
-        "max"
-      ],
-      "widgets_values_named": {
-        "prompt": "",
-        "width": 1344,
-        "height": 768,
-        "length": 124,
-        "ref_image_size": "max"
-      }
-    },
-    {
       "id": 155,
       "type": "KSamplerSelect",
       "pos": [
@@ -1161,9 +1015,10 @@
         }
       ],
       "properties": {
-        "aux_id": "bbaudio-2025/Comfyui-MMH3-UltimateUpscale",
+        "cnr_id": "Comfyui-MMH3-UltimateUpscale",
         "ver": "26cf738a33bbd497299663c26c6dfc8f26d5c2ee",
-        "Node name for S&R": "MMH3LatentUpscaleWithModelParams"
+        "Node name for S&R": "MMH3LatentUpscaleWithModelParams",
+        "aux_id": "bbaudio-2025/Comfyui-MMH3-UltimateUpscale"
       },
       "widgets_values": [
         "minimax_h3_latent_upscaler_3d_fp16.safetensors",
@@ -1278,9 +1133,10 @@
         }
       ],
       "properties": {
-        "aux_id": "bbaudio-2025/Comfyui-MMH3-UltimateUpscale",
+        "cnr_id": "Comfyui-MMH3-UltimateUpscale",
         "ver": "26cf738a33bbd497299663c26c6dfc8f26d5c2ee",
-        "Node name for S&R": "MMH3TemporalSplitParams"
+        "Node name for S&R": "MMH3TemporalSplitParams",
+        "aux_id": "bbaudio-2025/Comfyui-MMH3-UltimateUpscale"
       },
       "widgets_values": [
         85,
@@ -1305,7 +1161,7 @@
         110
       ],
       "flags": {},
-      "order": 40,
+      "order": 41,
       "mode": 0,
       "inputs": [
         {
@@ -1363,8 +1219,7 @@
           "name": "STRING",
           "type": "STRING",
           "links": [
-            279,
-            314
+            279
           ]
         }
       ],
@@ -1421,13 +1276,13 @@
         390
       ],
       "flags": {},
-      "order": 35,
+      "order": 37,
       "mode": 0,
       "inputs": [
         {
           "name": "model",
           "type": "MODEL",
-          "link": 347
+          "link": 357
         },
         {
           "name": "conditioning",
@@ -1499,9 +1354,10 @@
         }
       ],
       "properties": {
-        "aux_id": "bbaudio-2025/Comfyui-MMH3-UltimateUpscale",
+        "cnr_id": "Comfyui-MMH3-UltimateUpscale",
         "ver": "26cf738a33bbd497299663c26c6dfc8f26d5c2ee",
-        "Node name for S&R": "MMH3UltimateUpscale"
+        "Node name for S&R": "MMH3UltimateUpscale",
+        "aux_id": "bbaudio-2025/Comfyui-MMH3-UltimateUpscale"
       },
       "widgets_values": [
         1
@@ -1631,50 +1487,6 @@
       "bgcolor": "#335"
     },
     {
-      "id": 92,
-      "type": "SaveVideo",
-      "pos": [
-        450,
-        5610
-      ],
-      "size": [
-        670,
-        110
-      ],
-      "flags": {},
-      "order": 39,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "video",
-          "type": "VIDEO",
-          "link": 260
-        }
-      ],
-      "outputs": [
-        {
-          "name": "video",
-          "type": "VIDEO",
-          "links": null
-        }
-      ],
-      "properties": {
-        "cnr_id": "comfy-core",
-        "ver": "0.33.0",
-        "Node name for S&R": "SaveVideo"
-      },
-      "widgets_values": [
-        "video/MiniMax_H3",
-        "auto",
-        "auto"
-      ],
-      "widgets_values_named": {
-        "filename_prefix": "video/MiniMax_H3",
-        "format": "auto",
-        "codec": "auto"
-      }
-    },
-    {
       "id": 137,
       "type": "LoadImage",
       "pos": [
@@ -1730,7 +1542,7 @@
         110
       ],
       "flags": {},
-      "order": 41,
+      "order": 42,
       "mode": 0,
       "inputs": [
         {
@@ -1761,53 +1573,6 @@
         "format": "auto",
         "codec": "auto"
       }
-    },
-    {
-      "id": 143,
-      "type": "ModelAttentionBackend",
-      "pos": [
-        -480,
-        4700
-      ],
-      "size": [
-        280,
-        60
-      ],
-      "flags": {},
-      "order": 28,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "model",
-          "type": "MODEL",
-          "link": 350
-        }
-      ],
-      "outputs": [
-        {
-          "name": "MODEL",
-          "type": "MODEL",
-          "links": [
-            287,
-            288,
-            347,
-            348
-          ]
-        }
-      ],
-      "properties": {
-        "cnr_id": "comfy-core",
-        "ver": "0.33.0",
-        "Node name for S&R": "ModelAttentionBackend"
-      },
-      "widgets_values": [
-        "comfy kitchen attention"
-      ],
-      "widgets_values_named": {
-        "attention": "comfy kitchen attention"
-      },
-      "color": "#223",
-      "bgcolor": "#335"
     },
     {
       "id": 167,
@@ -2043,6 +1808,59 @@
       }
     },
     {
+      "id": 159,
+      "type": "MMH3SpatialSplitParams",
+      "pos": [
+        1440,
+        5700
+      ],
+      "size": [
+        320,
+        250
+      ],
+      "flags": {},
+      "order": 19,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "spatial_split_param",
+          "type": "H3_SPATIAL_PARAM",
+          "links": [
+            330
+          ]
+        }
+      ],
+      "properties": {
+        "cnr_id": "Comfyui-MMH3-UltimateUpscale",
+        "ver": "26cf738a33bbd497299663c26c6dfc8f26d5c2ee",
+        "Node name for S&R": "MMH3SpatialSplitParams",
+        "aux_id": "bbaudio-2025/Comfyui-MMH3-UltimateUpscale"
+      },
+      "widgets_values": [
+        864,
+        480,
+        128,
+        128,
+        32,
+        32,
+        256,
+        "earlier",
+        "linear"
+      ],
+      "widgets_values_named": {
+        "tile_width": 864,
+        "tile_height": 480,
+        "spatial_w_overlap": 128,
+        "spatial_h_overlap": 128,
+        "fade_width": 32,
+        "fade_height": 32,
+        "min_tile_size": 256,
+        "overlap_mode": "earlier",
+        "overlap_blend": "linear"
+      }
+    },
+    {
       "id": 169,
       "type": "MiniMaxH3SigmaShift",
       "pos": [
@@ -2089,55 +1907,278 @@
       "bgcolor": "#335"
     },
     {
-      "id": 159,
-      "type": "MMH3SpatialSplitParams",
+      "id": 143,
+      "type": "ModelAttentionBackend",
       "pos": [
-        1440,
-        5700
+        -480,
+        4700
       ],
       "size": [
-        320,
-        250
+        280,
+        60
       ],
       "flags": {},
-      "order": 19,
+      "order": 28,
       "mode": 0,
-      "inputs": [],
+      "inputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 350
+        }
+      ],
       "outputs": [
         {
-          "name": "spatial_split_param",
-          "type": "H3_SPATIAL_PARAM",
+          "name": "MODEL",
+          "type": "MODEL",
           "links": [
-            330
+            287,
+            288,
+            359
           ]
         }
       ],
       "properties": {
-        "aux_id": "bbaudio-2025/Comfyui-MMH3-UltimateUpscale",
-        "ver": "26cf738a33bbd497299663c26c6dfc8f26d5c2ee",
-        "Node name for S&R": "MMH3SpatialSplitParams"
+        "cnr_id": "comfy-core",
+        "ver": "0.33.0",
+        "Node name for S&R": "ModelAttentionBackend"
       },
       "widgets_values": [
-        864,
-        480,
-        128,
-        128,
-        32,
-        32,
-        256,
-        "earlier",
-        "linear"
+        "comfy kitchen attention"
       ],
       "widgets_values_named": {
-        "tile_width": 864,
-        "tile_height": 480,
-        "spatial_w_overlap": 128,
-        "spatial_h_overlap": 128,
-        "fade_width": 32,
-        "fade_height": 32,
-        "min_tile_size": 256,
-        "overlap_mode": "earlier",
-        "overlap_blend": "linear"
+        "attention": "comfy kitchen attention"
+      },
+      "color": "#223",
+      "bgcolor": "#335"
+    },
+    {
+      "id": 172,
+      "type": "MiniMaxH3SigmaShift",
+      "pos": [
+        1170,
+        4920
+      ],
+      "size": [
+        250,
+        90
+      ],
+      "flags": {},
+      "order": 31,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 359
+        }
+      ],
+      "outputs": [
+        {
+          "name": "MODEL",
+          "type": "MODEL",
+          "links": [
+            357,
+            358
+          ]
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.33.0",
+        "Node name for S&R": "MiniMaxH3SigmaShift"
+      },
+      "widgets_values": [
+        6,
+        3
+      ],
+      "widgets_values_named": {
+        "shift_video": 6,
+        "shift_audio": 3
+      },
+      "color": "#223",
+      "bgcolor": "#335"
+    },
+    {
+      "id": 92,
+      "type": "SaveVideo",
+      "pos": [
+        430,
+        5570
+      ],
+      "size": [
+        670,
+        110
+      ],
+      "flags": {},
+      "order": 40,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "video",
+          "type": "VIDEO",
+          "link": 260
+        }
+      ],
+      "outputs": [
+        {
+          "name": "video",
+          "type": "VIDEO",
+          "links": null
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.33.0",
+        "Node name for S&R": "SaveVideo"
+      },
+      "widgets_values": [
+        "video/MiniMax_H3",
+        "auto",
+        "auto"
+      ],
+      "widgets_values_named": {
+        "filename_prefix": "video/MiniMax_H3",
+        "format": "auto",
+        "codec": "auto"
+      }
+    },
+    {
+      "id": 151,
+      "type": "MiniMaxH3ReferenceToVideo",
+      "pos": [
+        1170,
+        5060
+      ],
+      "size": [
+        250,
+        390
+      ],
+      "flags": {},
+      "order": 26,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "clip",
+          "type": "CLIP",
+          "link": 305
+        },
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": 306
+        },
+        {
+          "name": "audio_vae",
+          "type": "VAE",
+          "link": 307
+        },
+        {
+          "label": "ref_image_0",
+          "name": "ref_images.ref_image_0",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": 308
+        },
+        {
+          "label": "ref_image_1",
+          "name": "ref_images.ref_image_1",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": 313
+        },
+        {
+          "label": "ref_image_2",
+          "name": "ref_images.ref_image_2",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "label": "ref_video_0",
+          "name": "ref_videos.ref_video_0",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "label": "ref_video_audio_0",
+          "name": "ref_video_audios.ref_video_audio_0",
+          "shape": 7,
+          "type": "AUDIO",
+          "link": null
+        },
+        {
+          "label": "ref_audio_0",
+          "name": "ref_audios.ref_audio_0",
+          "shape": 7,
+          "type": "AUDIO",
+          "link": null
+        },
+        {
+          "name": "width",
+          "type": "INT",
+          "widget": {
+            "name": "width"
+          },
+          "link": 351
+        },
+        {
+          "name": "height",
+          "type": "INT",
+          "widget": {
+            "name": "height"
+          },
+          "link": 354
+        },
+        {
+          "name": "length",
+          "type": "INT",
+          "widget": {
+            "name": "length"
+          },
+          "link": 315
+        },
+        {
+          "label": "ref_video_1",
+          "name": "ref_videos.ref_video_1",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "positive",
+          "type": "CONDITIONING",
+          "links": [
+            320
+          ]
+        },
+        {
+          "name": "LATENT",
+          "type": "LATENT",
+          "links": null
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.33.0",
+        "Node name for S&R": "MiniMaxH3ReferenceToVideo"
+      },
+      "widgets_values": [
+        "segment video which takes <Picture 1> as reference, clear and sharp details",
+        1344,
+        768,
+        124,
+        "max"
+      ],
+      "widgets_values_named": {
+        "prompt": "segment video which takes <Picture 1> as reference, clear and sharp details",
+        "width": 1344,
+        "height": 768,
+        "length": 124,
+        "ref_image_size": "max"
       }
     }
   ],
@@ -2391,19 +2432,11 @@
       "IMAGE"
     ],
     [
-      314,
-      138,
-      0,
-      151,
-      9,
-      "STRING"
-    ],
-    [
       315,
       131,
       1,
       151,
-      12,
+      11,
       "INT"
     ],
     [
@@ -2527,22 +2560,6 @@
       "VIDEO"
     ],
     [
-      347,
-      143,
-      0,
-      153,
-      0,
-      "MODEL"
-    ],
-    [
-      348,
-      143,
-      0,
-      154,
-      0,
-      "MODEL"
-    ],
-    [
       349,
       144,
       0,
@@ -2563,7 +2580,7 @@
       170,
       1,
       151,
-      10,
+      9,
       "INT"
     ],
     [
@@ -2587,7 +2604,7 @@
       171,
       1,
       151,
-      11,
+      10,
       "INT"
     ],
     [
@@ -2605,6 +2622,30 @@
       171,
       0,
       "INT"
+    ],
+    [
+      357,
+      172,
+      0,
+      153,
+      0,
+      "MODEL"
+    ],
+    [
+      358,
+      172,
+      0,
+      154,
+      0,
+      "MODEL"
+    ],
+    [
+      359,
+      143,
+      0,
+      172,
+      0,
+      "MODEL"
     ]
   ],
   "groups": [
@@ -2708,10 +2749,10 @@
   "config": {},
   "extra": {
     "ds": {
-      "scale": 0.5730855330117317,
+      "scale": 0.573085533011737,
       "offset": [
-        2125.0057630945826,
-        -4091.3518238580355
+        415.7928116886394,
+        -4520.17123843424
       ]
     },
     "frontendVersion": "1.49.6",
