@@ -178,5 +178,174 @@
         "tooltip": "仅供调试。逐分块空间网格元数据：偏移、瓦片范围、重叠、拼接模式。"
       }
     }
+  },
+  "LTX25LatentUpscaleParams": {
+    "display_name": "LTX25 潜空间放大参数",
+    "description": "为 'LTX25 Ultimate Upscale' 节点打包 LTX2.5 潜空间放大设置。LTX2.5 模型是固定的 2x 潜空间放大器；所请求的 width/height 是放大后整体画面尺寸，先经 2x 模型放大，再插值到目标尺寸。",
+    "inputs": {
+      "upscale_model": {
+        "name": "放大模型",
+        "tooltip": "LTX2.5 潜空间放大器（2x）。将 ltx-2.5-latent-spatial-upscaler 文件放入 latent_upscale_models 文件夹。"
+      },
+      "vae": {
+        "name": "VAE",
+        "tooltip": "LTX2.5 视频 VAE（放大期间用于 per_channel_statistics 归一化/反归一化）。必须是视频 VAE，而非音频 VAE。"
+      },
+      "width": {
+        "name": "宽度",
+        "tooltip": "放大后整体画面（每帧）的目标像素宽度。吸附为 32 的倍数（即 LTX VAE 32x 网格）。先执行 2x 模型放大，再插值到该尺寸。必须与 conditioning 的生成尺寸一致。"
+      },
+      "height": {
+        "name": "高度",
+        "tooltip": "放大后整体画面（每帧）的目标像素高度。吸附为 32 的倍数（即 LTX VAE 32x 网格）。先执行 2x 模型放大，再插值到该尺寸。必须与 conditioning 的生成尺寸一致。"
+      }
+    },
+    "outputs": {
+      "0": {
+        "tooltip": "供 'LTX25 Ultimate Upscale' 使用的 LTX2.5 放大设置。"
+      }
+    }
+  },
+  "LTX25TemporalSplitParams": {
+    "display_name": "LTX25 时间分块参数",
+    "description": "为 'LTX25 Ultimate Upscale' 节点打包时间分块设置：如何将输入潜变量切分为有重叠的时间分块（外层循环），以及分块接缝的锚定方式（anchor_mode：整段钉住 / 仅首帧 / 渐变）。",
+    "inputs": {
+      "chunk_length": {
+        "name": "分块长度",
+        "tooltip": "每个分块的目标像素帧数。必须满足 (n-1) % 8 == 0（LTX 8k+1 网格）。97 ≈ 24fps 下约 4 秒。"
+      },
+      "temporal_overlap": {
+        "name": "时间重叠",
+        "tooltip": "相邻分块之间重叠的像素帧数。必须满足 (n-1) % 8 == 0。建议为 9（一个潜空间 token）。anchor_mode 为 'full' 时该参数基本只移动接缝位置；为 'first_frame' / 'ramp' 时它决定接缝过渡带的可见宽度。"
+      },
+      "anchor_mode": {
+        "name": "锚定模式",
+        "tooltip": "下一分块的重叠区与上一分块重采样结果的关联策略（钉住强度由 anchor_strength 决定）。full（默认，原有行为）：整个重叠区复制自上一分块并通过噪声掩码钉住（mask = 1 - anchor_strength）；拼接交叉淡化混合的是相同内容，因此调整 temporal_overlap 基本只是移动接缝位置。first_frame（模式A，H3 风格）：仅复制并钉住第一个潜空间 token（约 8 帧），重叠区其余部分自由重采样，拼接时在整个重叠带上交叉淡化两个版本——temporal_overlap 直接决定接缝过渡带宽度。ramp（模式B，时序渐变）：重叠区以上一分块内容初始化，噪声掩码从接缝处的 (1 - anchor_strength) 线性过渡到重叠带末端的 1.0——是宽度等于 temporal_overlap 的真正时间渐变。"
+      },
+      "anchor_strength": {
+        "name": "锚定强度",
+        "tooltip": "重叠带接缝侧的钉住强度，所有锚定模式共用（LTX 图生视频 noise_mask）。1.0 = 完全保留上一分块内容，0.999 = 模型默认，0.0 = 关闭锚定（仅用交叉淡化拼接）。"
+      }
+    },
+    "outputs": {
+      "0": {
+        "tooltip": "供 'LTX25 Ultimate Upscale' 使用的时间分块设置。"
+      }
+    }
+  },
+  "LTX25SpatialSplitParams": {
+    "display_name": "LTX25 空间分块参数",
+    "description": "为 'LTX25 Ultimate Upscale' 节点打包空间分块（瓦片）设置：瓦片尺寸、各轴重叠与渐变、以及接缝拼接规则（内层循环）。",
+    "inputs": {
+      "tile_width": {
+        "name": "瓦片宽度",
+        "tooltip": "（放大后）分块分辨率下的瓦片宽度（像素）。必须是 32 的倍数（LTX VAE 32x）。"
+      },
+      "tile_height": {
+        "name": "瓦片高度",
+        "tooltip": "（放大后）分块分辨率下的瓦片高度（像素）。必须是 32 的倍数。"
+      },
+      "spatial_w_overlap": {
+        "name": "水平重叠",
+        "tooltip": "相邻瓦片之间的水平重叠（像素）。必须是 32 的倍数且小于瓦片宽度。"
+      },
+      "spatial_h_overlap": {
+        "name": "垂直重叠",
+        "tooltip": "相邻瓦片之间的垂直重叠（像素）。必须是 32 的倍数且小于瓦片高度。"
+      },
+      "fade_width": {
+        "name": "水平渐变",
+        "tooltip": "overlap 带 interior 侧 FADE 段（mask 0→1）的宽度（像素）。overlap 带分为冻结段（seam 侧，mask=0）+ 此 FADE 段（interior 侧）。fade_width 设定 FADE 段长度，冻结段占剩余部分。默认 32。设为 0 则整个 overlap 带完全冻结。"
+      },
+      "fade_height": {
+        "name": "垂直渐变",
+        "tooltip": "overlap 带 interior 侧 FADE 段（mask 0→1）的高度（像素）。参见 fade_width。"
+      },
+      "min_tile_size": {
+        "name": "最小瓦片尺寸",
+        "tooltip": "边缘瓦片的最小像素尺寸。如果剩余的边缘瓦片会更小，则最后一个瓦片会向后拉，直到至少达到此尺寸。不得超过瓦片尺寸。"
+      },
+      "overlap_mode": {
+        "name": "重叠模式",
+        "tooltip": "拼接时每个共享重叠带由谁取胜。'earlier'（默认）：已拼接的内容取胜。'later'：重新采样的瓦片取胜。"
+      },
+      "overlap_blend": {
+        "name": "重叠混合",
+        "tooltip": "拼接时重叠带的过渡方式：linear 交叉淡入淡出（默认）、smoothstep（缓动）、overwrite（整个带取自 overlap_mode 一侧）、midpoint（在带的中间硬切换）。"
+      }
+    },
+    "outputs": {
+      "0": {
+        "tooltip": "供 'LTX25 Ultimate Upscale' 使用的空间分块设置。"
+      }
+    }
+  },
+  "LTX25UltimateUpscale": {
+    "display_name": "LTX25 Ultimate Upscale",
+    "description": "通过完整自动流水线（时间分块 -> 潜空间放大（先 2x 模型放大再缩放到目标宽高）-> 空间分块 -> 带 preview 的逐 tile 采样 -> 空间拼接 -> 时间拼接）对一个已去噪的 LTX2.5 音视频潜变量重新采样增强。使用时间分块时，下一分块的重叠区会锚定到上一分块的重采样结果（LTX 图生视频 noise_mask），并以交叉淡化拼接；'temporal_split_param.anchor_mode' 选择锚定策略（'full' 钉住整个重叠带，'first_frame' 仅钉住首个 token 并在整个带上混合，'ramp' 在带上做线性时序渐变）。音频默认沿用输入音频（bypass_audio）；关闭后可让模型重新采样音频。",
+    "inputs": {
+      "model": {
+        "name": "模型",
+        "tooltip": "用于重新采样每个分块/瓦片的 LTX2.5 扩散模型（引导器在内部构建）。"
+      },
+      "conditioning": {
+        "name": "条件",
+        "tooltip": "用于生成此潜变量的 conditioning（含 frame_rate 的 LTXVConditioning）。原样传递给每个分块/瓦片（T2V 模式，无空间关键帧裁剪）。"
+      },
+      "latent": {
+        "name": "潜变量",
+        "tooltip": "待增强的已去噪 LTX2.5 音视频潜变量（嵌套的视频+音频）。"
+      },
+      "noise": {
+        "name": "噪声",
+        "tooltip": "噪声源；每个分块生成一张噪声张量。"
+      },
+      "sampler": {
+        "name": "采样器",
+        "tooltip": "每个分块/瓦片使用的采样器。"
+      },
+      "sigmas": {
+        "name": "Sigma",
+        "tooltip": "每个分块/瓦片使用的 sigma 调度。"
+      },
+      "negative": {
+        "name": "负向条件",
+        "tooltip": "负向 conditioning。连接时，使用带 'cfg' 值的 CFGGuider；否则使用基础引导器（仅正向）。"
+      },
+      "cfg": {
+        "name": "CFG",
+        "tooltip": "连接 'negative' 时使用的 CFG 强度。"
+      },
+      "latent_upscale_param": {
+        "name": "潜空间放大参数",
+        "tooltip": "'LTX25 Latent Upscale Params' 的输出。保持未连接可跳过放大。"
+      },
+      "temporal_split_param": {
+        "name": "时间分块参数",
+        "tooltip": "'LTX25 Temporal Split Params' 的输出。保持未连接则将潜变量作为单个分块处理。连接时下一分块的重叠区会锚定到上一分块（策略由 'anchor_mode' 选择：整段 / 仅首帧 / 渐变），并以交叉淡化拼接。"
+      },
+      "spatial_split_param": {
+        "name": "空间分块参数",
+        "tooltip": "'LTX25 Spatial Split Params' 的输出。保持未连接则对每个分块整体采样（不切分瓦片）。"
+      },
+      "bypass_audio": {
+        "name": "跳过音频",
+        "tooltip": "音频处理方式。True = 输出音频沿用输入音频（冻结，不重新采样）。False = 由模型重新采样音频；空间分块时每个时间区块取第一个空间分块的音频，相邻分块交叉淡入拼接。重新采样会增加计算量，但能让模型为增强后的视频重新生成音频。"
+      }
+    },
+    "outputs": {
+      "0": {
+        "name": "潜变量",
+        "tooltip": "放大、重采样、拼接后的 LTX2.5 音视频潜变量。"
+      },
+      "1": {
+        "name": "分块信息",
+        "tooltip": "仅供调试。逐分块元数据：帧起始/数量、视频 token 范围、是否已放大、锚定模式/token 数。"
+      },
+      "2": {
+        "name": "瓦片信息",
+        "tooltip": "仅供调试。逐分块空间网格元数据：偏移、瓦片范围、重叠、拼接模式。"
+      }
+    }
   }
 }
