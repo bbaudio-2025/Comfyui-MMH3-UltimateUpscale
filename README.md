@@ -8,6 +8,12 @@ MiniMax H3 generates video as a nested latent that bundles 24-channel video **an
 
 ---
 
+## Changelog
+
+- **20260825 - New experimental `LTX25 Ultimate Upscale` node.** Built on top of the MMH3 pipeline, it now also supports LTX2.5 nested AV latents (video `[B,128,T,H,W]` + audio `[B,C,time,freq]`) in a single node: temporal split -> latent upscale (fixed 2x model upscale, then interpolated to the target width/height) -> spatial split -> per-tile sampling -> stitch. Three optional param nodes are provided: `LTX25 Latent Upscale Params`, `LTX25 Temporal Split Params`, and `LTX25 Spatial Split Params`. Audio is buggy so you should use original audio latent. These nodes are highly experimental, so don't rely on them.
+
+---
+
 ## Features
 
 - **Upscale long + high-res video on limited VRAM.** The core design goal: temporal chunking keeps arbitrarily long clips in memory, spatial tiling keeps arbitrarily high resolutions in memory, and only one tile is sampled at a time — so peak VRAM stays at a single tile regardless of video length or output resolution.
