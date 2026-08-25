@@ -8,6 +8,10 @@ from .nodes import (
     MMH3LatentUpscaleParams,
     MMH3TemporalSplitParams,
     MMH3SpatialSplitParams,
+    LTX25UltimateUpscale,
+    LTX25LatentUpscaleParams,
+    LTX25TemporalSplitParams,
+    LTX25SpatialSplitParams,
 )
 
 NODE_CLASS_MAPPINGS = {
@@ -16,6 +20,10 @@ NODE_CLASS_MAPPINGS = {
     "MMH3LatentUpscaleParams": MMH3LatentUpscaleParams,
     "MMH3TemporalSplitParams": MMH3TemporalSplitParams,
     "MMH3SpatialSplitParams": MMH3SpatialSplitParams,
+    "LTX25UltimateUpscale": LTX25UltimateUpscale,
+    "LTX25LatentUpscaleParams": LTX25LatentUpscaleParams,
+    "LTX25TemporalSplitParams": LTX25TemporalSplitParams,
+    "LTX25SpatialSplitParams": LTX25SpatialSplitParams,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -24,6 +32,10 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "MMH3LatentUpscaleParams": "MMH3 Latent Upscale Params",
     "MMH3TemporalSplitParams": "MMH3 Temporal Split Params",
     "MMH3SpatialSplitParams": "MMH3 Spatial Split Params",
+    "LTX25UltimateUpscale": "LTX25 Ultimate Upscale",
+    "LTX25LatentUpscaleParams": "LTX25 Latent Upscale Params",
+    "LTX25TemporalSplitParams": "LTX25 Temporal Split Params",
+    "LTX25SpatialSplitParams": "LTX25 Spatial Split Params",
 }
 
 
@@ -36,6 +48,10 @@ class MMH3UltimateUpscaleExtension(ComfyExtension):
             MMH3LatentUpscaleParams,
             MMH3TemporalSplitParams,
             MMH3SpatialSplitParams,
+            LTX25UltimateUpscale,
+            LTX25LatentUpscaleParams,
+            LTX25TemporalSplitParams,
+            LTX25SpatialSplitParams,
         ]
 
 
