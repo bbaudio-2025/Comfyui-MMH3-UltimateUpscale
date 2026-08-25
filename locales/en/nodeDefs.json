@@ -146,5 +146,110 @@
         "tooltip": "DEBUG ONLY. Per-chunk spatial grid metadata: offsets, tile extents, overlaps, stitching mode."
       }
     }
+  },
+  "LTX25LatentUpscaleParams": {
+    "display_name": "LTX25 Latent Upscale Params",
+    "description": "Bundle the LTX2.5 latent upscale settings for the 'LTX25 Ultimate Upscale' node. The LTX2.5 model is a fixed 2x latent spatial upscaler; the requested width/height are the overall upscaled frame size, reached by 2x upscaling then interpolating to the target.",
+    "inputs": {
+      "upscale_model": {
+        "tooltip": "The LTX2.5 latent spatial upscaler (2x). Place ltx-2.5-latent-spatial-upscaler files in the latent_upscale_models folder."
+      },
+      "vae": {
+        "tooltip": "The LTX2.5 VIDEO VAE (used for per_channel_statistics normalize/un_normalize during upscale). Must be the video VAE, not the audio VAE."
+      },
+      "width": {
+        "tooltip": "Target overall pixel width of the upscaled frame (snapped to a multiple of 32, the LTX VAE 32x grid). The 2x model upscale is followed by interpolation to this size. Must match the conditioning's generation size."
+      },
+      "height": {
+        "tooltip": "Target overall pixel height of the upscaled frame (snapped to a multiple of 32, the LTX VAE 32x grid). The 2x model upscale is followed by interpolation to this size. Must match the conditioning's generation size."
+      }
+    },
+    "outputs": {
+      "0": {
+        "tooltip": "LTX2.5 upscale settings consumed by 'LTX25 Ultimate Upscale'."
+      }
+    }
+  },
+  "LTX25TemporalSplitParams": {
+    "display_name": "LTX25 Temporal Split Params",
+    "description": "Bundle the temporal split settings for the 'LTX25 Ultimate Upscale' node: how the input latent is cut into overlapping time chunks (outer loop) and how chunk seams are anchored (anchor_mode: full band / first frame / ramp).",
+    "inputs": {
+      "chunk_length": {
+        "tooltip": "Target pixel frames per chunk. MUST satisfy (n-1) % 8 == 0 (the LTX 8k+1 grid). 97 = ~4s @24fps."
+      },
+      "temporal_overlap": {
+        "tooltip": "Pixel frames of overlap between consecutive chunks. MUST satisfy (n-1) % 8 == 0. Recommended 9 (one latent token). With 'full' anchor_mode this mostly shifts the seam position; with 'first_frame'/'ramp' it controls the visible seam transition width."
+      },
+      "anchor_mode": {
+        "name": "Anchor Mode",
+        "tooltip": "How the next chunk's overlap band relates to the previous chunk's re-sampled result (pin strength set by 'anchor_strength'). 'full' (default, original behaviour): the ENTIRE overlap is copied from the previous chunk and pinned via the noise mask (mask = 1 - anchor_strength); the stitch cross-fade mixes identical content, so temporal_overlap mostly just shifts the seam position. 'first_frame' (Mode A, H3-style): only the FIRST latent token (~8 frames) is copied and pinned; the rest of the overlap re-samples freely and the stitch cross-fade blends the two versions across the whole band - temporal_overlap visibly controls the seam transition width. 'ramp' (Mode B, temporal fade): the overlap is initialised from the previous chunk and its noise-mask ramps linearly from (1 - anchor_strength) at the seam to 1.0 at the band end - a true temporal fade whose width IS temporal_overlap."
+      },
+      "anchor_strength": {
+        "tooltip": "Pin strength at the seam side of the overlap band, used by every anchor mode (LTX image-to-video noise_mask). 1.0 = keep previous content exactly, 0.999 = model default, 0.0 = disable anchoring (cross-fade only)."
+      }
+    },
+    "outputs": {
+      "0": {
+        "tooltip": "Temporal split settings consumed by 'LTX25 Ultimate Upscale'."
+      }
+    }
+  },
+  "LTX25SpatialSplitParams": {
+    "display_name": "LTX25 Spatial Split Params",
+    "description": "Bundle the spatial tile settings for the 'LTX25 Ultimate Upscale' node: tile size, per-axis overlap and fade, and seam stitching rules (inner loop).",
+    "inputs": {
+      "tile_width": {
+        "tooltip": "Tile width in PIXELS at the (upscaled) chunk resolution. Must be a multiple of 32 (LTX VAE 32x)."
+      },
+      "tile_height": {
+        "tooltip": "Tile height in PIXELS at the (upscaled) chunk resolution. Must be a multiple of 32."
+      },
+      "spatial_w_overlap": {
+        "tooltip": "Horizontal overlap in PIXELS between neighbouring tiles. Must be a multiple of 32 and smaller than the tile width."
+      },
+      "spatial_h_overlap": {
+        "tooltip": "Vertical overlap in PIXELS between neighbouring tiles. Must be a multiple of 32 and smaller than the tile height."
+      },
+      "fade_width": {
+        "tooltip": "Width in PIXELS of the FADE segment (mask 0->1) at the interior edge of the overlap band. The overlap band splits into a FROZEN segment (seam side, mask=0) + this FADE segment (interior side). fade_width sets the fade length; the frozen segment takes the rest. Default 32. Set to 0 to freeze the entire overlap strip."
+      },
+      "fade_height": {
+        "tooltip": "Height in PIXELS of the FADE segment (mask 0->1) at the interior edge of the overlap band. See fade_width."
+      },
+      "min_tile_size": {
+        "tooltip": "Minimum PIXEL size of edge tiles. If a leftover edge tile would be smaller, the last tile is pulled back until it reaches at least this size. Must not exceed the tile size."
+      },
+      "overlap_mode": {
+        "tooltip": "Who wins each shared overlap band when stitching. 'earlier' (default): the already-stitched content wins. 'later': the re-sampled tile wins."
+      },
+      "overlap_blend": {
+        "tooltip": "How the overlap band transitions when stitching: linear cross-fade (default), smoothstep (eased), overwrite (whole band from the overlap_mode side), midpoint (hard switch at the band's middle)."
+      }
+    },
+    "outputs": {
+      "0": {
+        "tooltip": "Spatial split settings consumed by 'LTX25 Ultimate Upscale'."
+      }
+    }
+  },
+  "LTX25UltimateUpscale": {
+    "display_name": "LTX25 Ultimate Upscale",
+    "description": "Re-sample an already-denoised LTX2.5 AV latent through the full auto pipeline in one node: temporal split (outer loop) -> latent upscale (per chunk: 2x model upscale then resized to the target width/height) -> spatial split (inner loop) -> per-tile sampling with preview -> spatial stitch -> temporal stitch. When a temporal split is used, the next chunk's overlap is anchored to the previous chunk's re-sampled result (LTX image-to-video noise_mask) and chunks are joined by cross-fade; 'temporal_split_param.anchor_mode' selects the strategy ('full' pins the whole band, 'first_frame' pins only the first token and blends across the band, 'ramp' applies a linear temporal fade across the band). Audio: by default the INPUT audio is carried unchanged (bypass_audio); disable it to let the model RE-SAMPLE audio.",
+    "inputs": {
+      "bypass_audio": {
+        "tooltip": "Audio handling. True = the output audio is the INPUT audio carried unchanged (frozen, never re-sampled). False = the audio is RE-SAMPLED by the model; with spatial tiling the FIRST tile's audio is taken for each time block, and consecutive chunks are cross-faded. Re-sampling costs extra compute but lets the model regenerate audio for the enhanced video."
+      }
+    },
+    "outputs": {
+      "0": {
+        "tooltip": "Upscaled, re-sampled, stitched LTX2.5 AV latent."
+      },
+      "1": {
+        "tooltip": "DEBUG ONLY. Per-chunk metadata: frame start/count, video token ranges, upscale applied, anchor mode/tokens."
+      },
+      "2": {
+        "tooltip": "DEBUG ONLY. Per-chunk spatial grid metadata: offsets, tile extents, overlaps, stitching mode."
+      }
+    }
   }
 }
