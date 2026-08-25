@@ -1648,15 +1648,20 @@ class LTX25TemporalSplitParams(io.ComfyNode):
             node_id="LTX25TemporalSplitParams",
             display_name="LTX25 Temporal Split Params",
             category="model/latent/ltxv",
-            description="Bundle the temporal split settings for the 'LTX25 Ultimate Upscale' node: how the input latent is cut into overlapping time chunks (outer loop).",
+            description="Bundle the temporal split settings for the 'LTX25 Ultimate Upscale' node: how the input latent is cut into overlapping time chunks (outer loop) and how chunk seams are anchored (anchor_mode: full band / first frame / ramp).",
             search_aliases=["ltx25 temporal param", "ltx chunk param"],
             inputs=[
                 io.Int.Input("chunk_length", default=97, min=9, max=100000, step=8,
                              tooltip="Target pixel frames per chunk. MUST satisfy (n-1) % 8 == 0 (the LTX 8k+1 grid). 97 = ~4s @24fps."),
                 io.Int.Input("temporal_overlap", default=9, min=1, max=100000, step=8,
-                             tooltip="Pixel frames of overlap between consecutive chunks. MUST satisfy (n-1) % 8 == 0. Recommended 9 (one latent token)."),
+                             tooltip="Pixel frames of overlap between consecutive chunks. MUST satisfy (n-1) % 8 == 0. Recommended 9 (one latent token). With 'full' anchor_mode this mostly shifts the seam position; with 'first_frame'/'ramp' it controls the visible seam transition width."),
+                io.Combo.Input("anchor_mode", options=["full", "first_frame", "ramp"], default="full",
+                               tooltip="How the next chunk's overlap band relates to the previous chunk's re-sampled result (pin strength set by 'anchor_strength'). "
+                                       "'full' (default, original behaviour): the ENTIRE overlap is copied from the previous chunk and pinned via the noise mask (mask = 1 - anchor_strength); the stitch cross-fade mixes identical content, so temporal_overlap mostly just shifts the seam position. "
+                                       "'first_frame' (Mode A, H3-style): only the FIRST latent token (~8 frames) is copied and pinned; the rest of the overlap re-samples freely and the stitch cross-fade blends the two versions across the whole band - temporal_overlap visibly controls the seam transition width. "
+                                       "'ramp' (Mode B, temporal fade): the overlap is initialised from the previous chunk and its noise-mask ramps linearly from (1 - anchor_strength) at the seam to 1.0 at the band end - a true temporal fade whose width IS temporal_overlap."),
                 io.Float.Input("anchor_strength", default=0.999, min=0.0, max=1.0, step=0.001, round=0.001,
-                               tooltip="Temporal keyframe anchoring: the next chunk's overlap frames are pinned to the previous chunk's re-sampled frames (LTX image-to-video noise_mask). 1.0 = keep previous content exactly, 0.999 = model default, 0.0 = disable (cross-fade only)."),
+                               tooltip="Pin strength at the seam side of the overlap band, used by every anchor mode (LTX image-to-video noise_mask). 1.0 = keep previous content exactly, 0.999 = model default, 0.0 = disable anchoring (cross-fade only)."),
             ],
             outputs=[
                 LTX_TEMPORAL_PARAM.Output("temporal_split_param",
@@ -1665,7 +1670,7 @@ class LTX25TemporalSplitParams(io.ComfyNode):
         )
 
     @classmethod
-    def execute(cls, chunk_length, temporal_overlap, anchor_strength) -> io.NodeOutput:
+    def execute(cls, chunk_length, temporal_overlap, anchor_strength, anchor_mode="full") -> io.NodeOutput:
         if (chunk_length - 1) % LTX_TEMPORAL_FACTOR != 0:
             raise ValueError(f"chunk_length must satisfy (n-1) % 8 == 0 (LTX 8k+1 grid); got {chunk_length}")
         if (temporal_overlap - 1) % LTX_TEMPORAL_FACTOR != 0:
@@ -1673,7 +1678,7 @@ class LTX25TemporalSplitParams(io.ComfyNode):
         if temporal_overlap >= chunk_length:
             raise ValueError("temporal_overlap must be smaller than chunk_length")
         param = {"chunk_length": chunk_length, "temporal_overlap": temporal_overlap,
-                 "anchor_strength": anchor_strength}
+                 "anchor_strength": anchor_strength, "anchor_mode": anchor_mode}
         return io.NodeOutput(param)
 
 
@@ -1762,10 +1767,12 @@ class LTX25UltimateUpscale(io.ComfyNode):
                 "upscale (per chunk: 2x model upscale then resized to the target "
                 "width/height) -> spatial split (inner loop) -> per-tile "
                 "sampling with preview -> spatial stitch -> temporal stitch. "
-                "When a temporal split is used, the next chunk's overlap frames are "
-                "anchored to the previous chunk's re-sampled frames (LTX image-to-video "
-                "noise_mask; controlled by 'temporal_split_param.anchor_strength') and "
-                "the chunks are also joined by cross-fade. "
+                "When a temporal split is used, the next chunk's overlap is anchored "
+                "to the previous chunk's re-sampled result (LTX image-to-video "
+                "noise_mask) and chunks are joined by cross-fade; 'temporal_split_param.anchor_mode' "
+                "selects the strategy: 'full' pins the whole overlap band (original behaviour), "
+                "'first_frame' pins only the first token and blends across the band (H3-style), "
+                "'ramp' applies a linear temporal fade across the band. "
                 "Audio: by default the INPUT audio is carried unchanged (bypass_audio); "
                 "disable it to let the model RE-SAMPLE audio (with spatial tiling the first "
                 "tile's audio is taken per time block, chunks cross-faded). "
@@ -1789,7 +1796,7 @@ class LTX25UltimateUpscale(io.ComfyNode):
                 LTX_UPSCALE_PARAM.Input("latent_upscale_param", optional=True,
                                         tooltip="Output of 'LTX25 Latent Upscale Params'. Leave unconnected to skip upscaling."),
                 LTX_TEMPORAL_PARAM.Input("temporal_split_param", optional=True,
-                                         tooltip="Output of 'LTX25 Temporal Split Params'. Leave unconnected to process the latent as a single chunk. When connected, the next chunk's overlap frames are anchored to the previous chunk (keyframe anchoring) and joined by cross-fade."),
+                                          tooltip="Output of 'LTX25 Temporal Split Params'. Leave unconnected to process the latent as a single chunk. When connected, the next chunk's overlap is anchored to the previous chunk (strategy selected by 'anchor_mode': full band / first frame only / temporal ramp) and joined by cross-fade."),
                 LTX_SPATIAL_PARAM.Input("spatial_split_param", optional=True,
                                          tooltip="Output of 'LTX25 Spatial Split Params'. Leave unconnected to sample each chunk whole (no tiling)."),
                 io.Boolean.Input("bypass_audio", default=True,
@@ -1834,10 +1841,12 @@ class LTX25UltimateUpscale(io.ComfyNode):
             overlap = int(temporal_split_param["temporal_overlap"])
             bounds, frame_count = ltx_compute_segments(tv, chunk_length, overlap)
             anchor_strength = float(temporal_split_param.get("anchor_strength", 0.0) or 0.0)
+            anchor_mode = str(temporal_split_param.get("anchor_mode") or "full")
         else:
             frame_count = ltx_frames_for_tokens(tv)
             bounds = [(0, 0, tv, frame_count)]
             anchor_strength = 0.0
+            anchor_mode = "full"
 
         acc_v = None
         acc_a = None
@@ -1868,19 +1877,42 @@ class LTX25UltimateUpscale(io.ComfyNode):
             cond_i = conditioning  # T2V: no re-anchor, no spatial cropping
 
             # --- Temporal keyframe anchoring (LTX image-to-video analogue of MMH3
-            #     anchor_conditioning): pin the next chunk's overlap frames to the
-            #     previous chunk's re-sampled frames by lowering their noise, so the
-            #     model keeps that content. Cross-fade stitching is kept as well. ---
+            #     anchor_conditioning): pin part of the next chunk's overlap to the
+            #     previous chunk's re-sampled frames via the noise_mask. Three modes
+            #     (temporal_split_param.anchor_mode):
+            #       'full'        - the whole overlap band is copied and pinned at
+            #                       (1 - anchor_strength); the stitch cross-fade then
+            #                       mixes identical content (original behaviour).
+            #       'first_frame' - only the first latent token (~8 frames) is copied
+            #                       and pinned; the rest re-samples freely and the
+            #                       cross-fade blends across the full band width.
+            #       'ramp'        - the band is initialised from the previous chunk and
+            #                       the mask ramps linearly from (1 - anchor_strength)
+            #                       at the seam to 1.0 at the band end.
+            #     Cross-fade stitching is kept in every mode. ---
             vmask = None
+            anchored = None
             if anchor_strength > 0.0 and i > 0 and acc_v is not None:
                 n = acc_v.shape[2] - k0
                 n = min(max(n, 0), chunk_v.shape[2])
                 if n > 0:
-                    chunk_v[:, :, :n] = acc_v[:, :, k0:k0 + n].to(
-                        dtype=chunk_v.dtype, device=chunk_v.device)
                     Tv, H, W = chunk_v.shape[2], chunk_v.shape[3], chunk_v.shape[4]
                     vmask = torch.ones((1, 1, Tv, H, W), device=chunk_v.device, dtype=torch.float32)
-                    vmask[:, :, :n] = 1.0 - anchor_strength
+                    prev = acc_v[:, :, k0:k0 + n].to(dtype=chunk_v.dtype, device=chunk_v.device)
+                    if anchor_mode == "first_frame":
+                        anchored = min(1, n)
+                        chunk_v[:, :, :anchored] = prev[:, :, :anchored]
+                        vmask[:, :, :anchored] = 1.0 - anchor_strength
+                    elif anchor_mode == "ramp":
+                        anchored = n
+                        chunk_v[:, :, :n] = prev
+                        w = torch.linspace(1.0 - anchor_strength, 1.0, n,
+                                           device=chunk_v.device, dtype=torch.float32)
+                        vmask[:, :, :n] = w.view(1, 1, n, 1, 1)
+                    else:  # "full"
+                        anchored = n
+                        chunk_v[:, :, :n] = prev
+                        vmask[:, :, :n] = 1.0 - anchor_strength
 
             if spatial_split_param is not None:
                 chunk_out_v, chunk_out_a, tile_info = ltx_spatial_process(
@@ -1913,6 +1945,8 @@ class LTX25UltimateUpscale(io.ComfyNode):
                 "frame_count": f1 - f0,
                 "video_tokens": [k0, k1],
                 "upscaled": upscaled,
+                "anchor_mode": anchor_mode if i > 0 else None,
+                "anchored_tokens": anchored,
                 "spatial_h": chunk_v.shape[3],
                 "spatial_w": chunk_v.shape[4],
             })
