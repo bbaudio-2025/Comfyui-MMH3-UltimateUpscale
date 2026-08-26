@@ -48,6 +48,55 @@ MiniMax H3 generates video as a nested latent that bundles 24-channel video **an
 
 ---
 
+## Why chunked re-sampling beats dynamic VRAM offloading
+
+Modern PyTorch/CUDA can shuffle weights between RAM and VRAM on demand, so in principle you can generate without tiling even when the working set exceeds VRAM. In practice this is **dramatically slower**, and the reason is a bandwidth gap of one to two orders of magnitude:
+
+| Path | Typical bandwidth |
+|------|------------------|
+| GPU VRAM (GDDR/HBM) | ~1000 GB/s |
+| PCIe 4.0 x16 (RAM ↔ GPU) | ~32 GB/s |
+| PCIe 5.0 x16 | ~64 GB/s |
+
+Diffusion sampling runs tens of sequential denoising steps, and a transformer revisits its blocks in the **same cyclic order every step** — the worst case for any residency cache. If the weights do not fit, nearly all non-resident bytes are re-moved over PCIe on *every* step:
+
+```
+T(offload) ≈ steps × non-resident bytes / PCIe_bandwidth      ← bandwidth-bound
+T(chunked) ≈ pieces × FLOPs_piece / GPU_FLOPS                 ← compute-bound
+```
+
+Unified-memory page faults additionally serialize the CUDA stream, so GPU utilization collapses to single digits. Chunked re-sampling instead bounds the peak working set to **all weights + one piece's activations**, keeping every forward pass compute-bound. The price is only a small, predictable redundancy:
+
+- spatial: ≈ ((tile + overlap) / tile)² — e.g. 512 px tile with 128 px overlap → ×1.56
+- temporal: ≈ (chunk + overlap) / chunk — e.g. 136 frames with 17 overlap → ×1.13
+
+A constant factor of ~1.2–1.8× always beats a 15–60× per-byte penalty. Host↔VRAM offloading only pays when the excess is small *and* every moved byte gets high reuse; large-DiT multi-step denoising satisfies neither.
+
+---
+
+## Tuning chunk & tile sizes for your VRAM
+
+Per-piece sampling VRAM ≈ **model weights + activations**, where the activation part scales roughly with `chunk_length × tile_width × tile_height`:
+
+- **Too large** → the piece spills into the streaming regime described above (15–60× slowdown per byte).
+- **Too small** → the fixed overlap taxes dominate: each axis pays `(size + overlap) / size`, so e.g. shrinking tiles to 256 px with a fixed 128 px overlap already costs ×2.25 in redundant pixels.
+
+Aim for the **largest pieces that keep peak VRAM just under capacity** (watch ComfyUI's VRAM meter during the first tile), keeping total redundancy within roughly ×1.3–1.8. Starting points for H3:
+
+| GPU VRAM | tile_width × tile_height | chunk_length (multiple of 17 px frames) |
+|----------|--------------------------|------------------------------------------|
+| 8 GB     | 320–384                  | 34–68                                    |
+| 12 GB    | 384–512                  | 51–102                                   |
+| 16 GB    | 512–576                  | 102–153                                  |
+| 24 GB    | 576–768                  | 136–170                                  |
+
+Notes:
+- Values assume quantized/pruned H3 checkpoints; measure your own peak and adjust one step at a time.
+- Keep tiles ≥ 256 px, or the fixed overlaps eat the budget.
+- The LTX25 node follows the same principle on its 32-px grid; if your checkpoint cannot stay resident at all, smaller pieces still help by minimizing spill traffic.
+
+---
+
 ## Nodes
 
 | Node | Role |
@@ -72,7 +121,7 @@ MiniMax H3 generates video as a nested latent that bundles 24-channel video **an
 
 ## Reference Projects
 
-This node is built on top of two existing community projects:
+This node is built on top of following existing community projects:
 
 - **Latent split (temporal / spatial / anchor / append mechanics):**  
   https://github.com/bbaudio-2025/Comfyui-MiniMax-H3-LatentSplit
