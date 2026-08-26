@@ -30,6 +30,10 @@ NODE_CLASS_MAPPINGS = {
     "LTX25ReferenceParams": LTX25ReferenceParams,
 }
 
+# front-end JS: auto-show/hide tile size vs rows/cols inputs on the two
+# Spatial Split Params nodes based on the tile_size_mode combo
+WEB_DIRECTORY = "./web"
+
 NODE_DISPLAY_NAME_MAPPINGS = {
     "MMH3UltimateUpscale": "MMH3 Ultimate Upscale",
     "MMH3LatentUpscaleWithModelParams": "MMH3 Latent Upscale with Model Params",
