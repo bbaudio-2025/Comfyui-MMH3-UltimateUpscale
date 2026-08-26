@@ -12,6 +12,8 @@ from .nodes import (
     LTX25LatentUpscaleParams,
     LTX25TemporalSplitParams,
     LTX25SpatialSplitParams,
+    LTX25ReferenceParams,
+    LTX25ICLoRALoader,
 )
 
 NODE_CLASS_MAPPINGS = {
@@ -24,6 +26,8 @@ NODE_CLASS_MAPPINGS = {
     "LTX25LatentUpscaleParams": LTX25LatentUpscaleParams,
     "LTX25TemporalSplitParams": LTX25TemporalSplitParams,
     "LTX25SpatialSplitParams": LTX25SpatialSplitParams,
+    "LTX25ICLoRALoader": LTX25ICLoRALoader,
+    "LTX25ReferenceParams": LTX25ReferenceParams,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -36,6 +40,8 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "LTX25LatentUpscaleParams": "LTX25 Latent Upscale Params",
     "LTX25TemporalSplitParams": "LTX25 Temporal Split Params",
     "LTX25SpatialSplitParams": "LTX25 Spatial Split Params",
+    "LTX25ICLoRALoader": "LTX25 IC-LoRA Loader (MSR)",
+    "LTX25ReferenceParams": "LTX25 Reference Params",
 }
 
 
@@ -52,6 +58,8 @@ class MMH3UltimateUpscaleExtension(ComfyExtension):
             LTX25LatentUpscaleParams,
             LTX25TemporalSplitParams,
             LTX25SpatialSplitParams,
+            LTX25ReferenceParams,
+            LTX25ICLoRALoader,
         ]
 
 
