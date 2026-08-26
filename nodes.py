@@ -251,6 +251,38 @@ def blend_weights(t, overlap_blend, overlap_mode):
     return 1.0 - step
 
 
+def _solve_equal_tiles(total_px, count, base_overlap_px, granularity):
+    """Solve (tile_px, overlap_px) so `count` tiles of EXACTLY equal size cover
+    total_px, edge tiles included: count*tile - (count-1)*overlap == total_px.
+
+    The solved overlap is a multiple of `granularity` (one latent token:
+    16px for MiniMax H3, 32px for LTX). `base_overlap_px` is the user's desired
+    overlap; the search starts from the smallest tile that honours it, so the
+    solved overlap lands as close to it as the divisibility constraints allow.
+    Returns (tile_px, overlap_px); raises ValueError if no solution exists."""
+    g = int(granularity)
+    if count <= 1:
+        return -(-int(total_px) // g) * g, 0
+    start = -(-((int(total_px) + (count - 1) * int(base_overlap_px)) // count) // g) * g
+    # s - overlap == (total - s) / (count - 1), so s is bounded from above too:
+    # every tile needs at least one token of non-overlapped content.
+    upper = int(total_px) - g * (count - 1)
+    if start > upper:
+        raise ValueError(
+            f"Cannot split {total_px}px into {count} equal tiles with "
+            f"{base_overlap_px}px overlap: tiles would have no unique content. "
+            f"Reduce the overlap or the tile count.")
+    for s in range(start, upper + 1, g):
+        num = count * s - int(total_px)
+        if num % (count - 1) == 0:
+            o = num // (count - 1)
+            if o % g == 0 and 0 <= o <= s - g:
+                return s, o
+    raise ValueError(
+        f"No equal-tile solution for {total_px}px / {count} tiles / overlap "
+        f"{base_overlap_px}px on a {g}px grid; adjust the overlap slightly.")
+
+
 def crop_keyframes_to_tile(cond, src_h, src_w, r0, c0, tr, tc):
     """Spatially crop every keyframe's video latent to a tile of the source frame.
 
@@ -1161,24 +1193,37 @@ class MMH3SpatialSplitParams(io.ComfyNode):
             description=(
                 "Bundle the spatial tile settings for the 'MMH3 Ultimate Upscale' "
                 "node: tile size, per-axis overlap and fade, and seam stitching "
-                "rules (inner loop)."
+                "rules (inner loop). Two tile sizing modes: enter explicit pixel "
+                "sizes, or enter a row/column count and let the node solve an "
+                "equal-size tile grid (all tiles identical, edge tiles included) - "
+                "the resolved tile size is exposed as tile_width/tile_height outputs."
             ),
             search_aliases=["h3 spatial params", "spatial split param", "tile param"],
             inputs=[
+                io.Int.Input("upscale_width", default=1024, min=32, max=100000, step=32,
+                             tooltip="[rows_cols mode] Overall upscaled frame WIDTH in PIXELS that gets split into grid_cols equal-size tile columns. Must be a multiple of 32 and must match the width set in 'MMH3 Latent Upscale Params'. Ignored in specific_size mode."),
+                io.Int.Input("upscale_height", default=1024, min=32, max=100000, step=32,
+                             tooltip="[rows_cols mode] Overall upscaled frame HEIGHT in PIXELS that gets split into grid_rows equal-size tile rows. Must be a multiple of 32 and must match the height set in 'MMH3 Latent Upscale Params'. Ignored in specific_size mode."),
+                io.Combo.Input("tile_size_mode", options=["specific_size", "rows_cols"], default="specific_size",
+                               tooltip="How the tile size is determined. 'specific_size' (default): use tile_width/tile_height below. 'rows_cols': split the frame given by upscale_width/upscale_height into grid_rows x grid_cols EQUAL-SIZE tiles (edge tiles included) - the per-axis overlap is auto-solved so every tile ends up exactly the same size; errors out if the solved tiles would be smaller than min_tile_size."),
                 io.Int.Input("tile_width", default=512, min=32, max=100000, step=32,
-                             tooltip="Tile width in PIXELS at the (upscaled) chunk resolution. Must be a multiple of 32."),
+                             tooltip="[specific_size mode] Tile width in PIXELS at the (upscaled) chunk resolution. Must be a multiple of 32."),
                 io.Int.Input("tile_height", default=512, min=32, max=100000, step=32,
-                             tooltip="Tile height in PIXELS at the (upscaled) chunk resolution. Must be a multiple of 32."),
+                             tooltip="[specific_size mode] Tile height in PIXELS at the (upscaled) chunk resolution. Must be a multiple of 32."),
+                io.Int.Input("grid_rows", default=2, min=1, max=9, step=1,
+                             tooltip="[rows_cols mode] Number of tile ROWS along the height axis (1-9)."),
+                io.Int.Input("grid_cols", default=2, min=1, max=9, step=1,
+                             tooltip="[rows_cols mode] Number of tile COLUMNS along the width axis (1-9)."),
                 io.Int.Input("spatial_w_overlap", default=128, min=0, max=100000, step=32,
-                             tooltip="Horizontal overlap in PIXELS between neighbouring tiles. Must be a multiple of 32 and smaller than the tile width."),
+                             tooltip="Horizontal overlap in PIXELS between neighbouring tiles. Must be a multiple of 32 and smaller than the tile width. In rows_cols mode this is the DESIRED overlap; the node auto-solves the actual value (multiple of 16px, the H3 latent token) so all tiles stay equal."),
                 io.Int.Input("spatial_h_overlap", default=128, min=0, max=100000, step=32,
-                             tooltip="Vertical overlap in PIXELS between neighbouring tiles. Must be a multiple of 32 and smaller than the tile height."),
+                             tooltip="Vertical overlap in PIXELS between neighbouring tiles. Must be a multiple of 32 and smaller than the tile height. In rows_cols mode this is the DESIRED overlap; the node auto-solves the actual value (multiple of 16px, the H3 latent token) so all tiles stay equal."),
                 io.Int.Input("fade_width", default=32, min=0, max=100000, step=32,
-                             tooltip="Width in PIXELS of the FADE segment (mask 0->1) at the interior edge of the overlap band. The overlap band splits into a FROZEN segment (seam side, mask=0, keeps the neighbour's content) + this FADE segment (interior side). fade_width sets the fade length; the frozen segment takes the rest (overlap - fade). Default 32. Set to 0 to freeze the entire overlap strip."),
+                             tooltip="Width in PIXELS of the FADE segment (mask 0->1) at the interior edge of the overlap band. The overlap band splits into a FROZEN segment (seam side, mask=0, keeps the neighbour's content) + this FADE segment (interior side). fade_width sets the fade length; the frozen segment takes the rest (overlap - fade). Default 32. Set to 0 to freeze the entire overlap strip. Clamped to the solved overlap in rows_cols mode."),
                 io.Int.Input("fade_height", default=32, min=0, max=100000, step=32,
-                             tooltip="Height in PIXELS of the FADE segment (mask 0->1) at the interior edge of the overlap band. The overlap band splits into a FROZEN segment (seam side, mask=0, keeps the neighbour's content) + this FADE segment (interior side). fade_height sets the fade length; the frozen segment takes the rest (overlap - fade). Default 32. Set to 0 to freeze the entire overlap strip."),
+                             tooltip="Height in PIXELS of the FADE segment (mask 0->1) at the interior edge of the overlap band. The overlap band splits into a FROZEN segment (seam side, mask=0, keeps the neighbour's content) + this FADE segment (interior side). fade_height sets the fade length; the frozen segment takes the rest (overlap - fade). Default 32. Set to 0 to freeze the entire overlap strip. Clamped to the solved overlap in rows_cols mode."),
                 io.Int.Input("min_tile_size", default=256, min=0, max=100000, step=32,
-                             tooltip="Minimum PIXEL size of edge tiles. If a leftover edge tile would be smaller, the last tile is pulled back until it reaches at least this size; the seam overlap then grows and is blended over its full width. 256 (default) keeps small leftover tiles as-is. Must not exceed the tile size."),
+                             tooltip="Minimum PIXEL size of edge tiles. If a leftover edge tile would be smaller, the last tile is pulled back until it reaches at least this size; the seam overlap then grows and is blended over its full width. 256 (default) keeps small leftover tiles as-is. Must not exceed the tile size. In rows_cols mode an error is raised if the solved tile size falls below this."),
                 io.Combo.Input("overlap_mode", options=["earlier", "later"], default="earlier",
                                tooltip="Who wins each shared overlap band when stitching. 'earlier' (default): the already-stitched content wins. 'later': the re-sampled tile wins. Does NOT affect the noise mask."),
                 io.Combo.Input("overlap_blend", options=["linear", "smoothstep", "overwrite", "midpoint"], default="linear",
@@ -1187,12 +1232,51 @@ class MMH3SpatialSplitParams(io.ComfyNode):
             outputs=[
                 H3_SPATIAL_PARAM.Output("spatial_split_param",
                                         tooltip="Spatial split settings consumed by 'MMH3 Ultimate Upscale'."),
+                io.Int.Output("tile_width",
+                              tooltip="Resolved tile width in PIXELS: the validated input in specific_size mode, or the equal-tile solution computed from upscale_width/grid_cols in rows_cols mode."),
+                io.Int.Output("tile_height",
+                              tooltip="Resolved tile height in PIXELS: the validated input in specific_size mode, or the equal-tile solution computed from upscale_height/grid_rows in rows_cols mode."),
             ],
         )
 
     @classmethod
-    def execute(cls, tile_width, tile_height, spatial_w_overlap, spatial_h_overlap,
-                fade_width, fade_height, min_tile_size, overlap_mode, overlap_blend) -> io.NodeOutput:
+    def execute(cls, upscale_width, upscale_height, tile_size_mode, tile_width,
+                tile_height, grid_rows, grid_cols,
+                spatial_w_overlap, spatial_h_overlap,
+                fade_width, fade_height, min_tile_size, overlap_mode,
+                overlap_blend) -> io.NodeOutput:
+        if tile_size_mode == "rows_cols":
+            # Equal-size grid solved HERE so the tile outputs are always real:
+            # split upscale_width/height into grid_cols x grid_rows tiles of
+            # exactly equal size (edges included). Overlap granularity is one
+            # latent token: 16px for MiniMax H3.
+            for name, v in (("upscale_width", upscale_width), ("upscale_height", upscale_height)):
+                if v <= 0 or v % 32 != 0:
+                    raise ValueError(f"'{name}' must be a positive multiple of 32 pixels; got {v}.")
+            tw, ow = _solve_equal_tiles(upscale_width, grid_cols, spatial_w_overlap, 16)
+            th, oh = _solve_equal_tiles(upscale_height, grid_rows, spatial_h_overlap, 16)
+            if tw < min_tile_size or th < min_tile_size:
+                raise ValueError(
+                    f"rows_cols mode: solved tile size is {th}x{tw}px "
+                    f"(grid {grid_rows}x{grid_cols} over {upscale_height}x{upscale_width}px), "
+                    f"which is smaller than min_tile_size ({min_tile_size}px). "
+                    f"Reduce grid_rows/grid_cols, or lower min_tile_size to at most "
+                    f"{min(tw, th)}px.")
+            param = {
+                "tile_width": tw, "tile_height": th,
+                "spatial_w_overlap": ow, "spatial_h_overlap": oh,
+                "fade_width": min(fade_width, ow),
+                "fade_height": min(fade_height, oh),
+                "min_tile_size": min_tile_size,
+                "overlap_mode": overlap_mode, "overlap_blend": overlap_blend,
+                "tile_size_mode": tile_size_mode,
+                "grid_rows": grid_rows, "grid_cols": grid_cols,
+            }
+            print(f"[MMH3 Spatial Split Params] rows_cols mode: {grid_rows}x{grid_cols} "
+                  f"tiles of {th}x{tw}px over {upscale_height}x{upscale_width}px "
+                  f"(overlap h={oh} w={ow}, fade h={param['fade_height']} w={param['fade_width']})")
+            return io.NodeOutput(param, tw, th)
+
         for name, v in (("tile_width", tile_width), ("tile_height", tile_height),
                         ("spatial_w_overlap", spatial_w_overlap), ("spatial_h_overlap", spatial_h_overlap),
                         ("fade_width", fade_width), ("fade_height", fade_height),
@@ -1219,8 +1303,9 @@ class MMH3SpatialSplitParams(io.ComfyNode):
             "min_tile_size": min_tile_size,
             "overlap_mode": overlap_mode,
             "overlap_blend": overlap_blend,
+            "tile_size_mode": tile_size_mode,
         }
-        return io.NodeOutput(param)
+        return io.NodeOutput(param, tile_width, tile_height)
 
 
 # ---------------------------------------------------------------------------
@@ -1626,11 +1711,14 @@ def ltx_temporal_append(acc_v, acc_a, chunk_v, chunk_a, index, k0):
 
 
 def ltx_spatial_process(chunk_v, chunk_a, cond, sp, model, noise, sampler, sigmas,
-                        negative, cfg, vmask=None, bypass_audio=True):
+                        negative, cfg, vmask=None, bypass_audio=True, ref_guides=None):
     """Inner loop: spatial split -> per-tile sampling -> spatial stitch.
     Mirrors MMH3 spatial_process, adapted for LTX (32x VAE). Audio is carried
     unchanged (frozen in every tile, never re-sampled). T2V conditioning has no
-    spatial keyframes, so it is passed through uncropped. Returns
+    spatial keyframes, so it is passed through uncropped. Reference guides
+    (`ref_guides`, optional) are appended PER TILE - after the spatial crop -
+    so their keyframe coordinates match each tile's own grid; the appended
+    suffix is stripped from the sampled result before stitching. Returns
     (reassembled_video, tile_info)."""
     tw = int(sp["tile_width"]) // LTX_VAE_DOWNSAMPLE
     th = int(sp["tile_height"]) // LTX_VAE_DOWNSAMPLE
@@ -1690,14 +1778,27 @@ def ltx_spatial_process(chunk_v, chunk_a, cond, sp, model, noise, sampler, sigma
             # Audio mask: 0 = frozen (bypass), 1 = re-sampled. When re-sampled, the
             # FIRST tile's audio is kept for the whole time block (see return below).
             ma = torch.zeros_like(chunk_a) if bypass_audio else torch.ones_like(chunk_a)
-            piece = {
-                "samples": comfy.nested_tensor.NestedTensor((tile, chunk_a)),
-                "noise_mask": comfy.nested_tensor.NestedTensor((mv, ma)),
-            }
 
             cond_tile = cond  # T2V: no spatial keyframe cropping
-            out = sample_piece(piece, cond_tile, model, noise, sampler, sigmas, negative, cfg)
+            pos_t, neg_t = cond_tile, negative
+            sample_v, sample_mv = tile, mv
+            n_guide = 0
+            if ref_guides is not None:
+                # Append guides AFTER the spatial crop so their recorded keyframe
+                # coordinates are against THIS tile's grid (per-tile fresh conds;
+                # conditioning_set_values never mutates the pristine inputs).
+                sample_v, sample_mv, pos_t, neg_t, n_guide = ltx_append_guides(
+                    tile, mv, cond_tile, negative, ref_guides)
+            piece = {
+                "samples": comfy.nested_tensor.NestedTensor((sample_v, chunk_a)),
+                "noise_mask": comfy.nested_tensor.NestedTensor((sample_mv, ma)),
+            }
+
+            out = sample_piece(piece, pos_t, model, noise, sampler, sigmas, neg_t, cfg)
             tile_v = out.tensors[0]
+            if n_guide > 0:
+                # Strip the appended guide suffix (guides sit at the END).
+                tile_v = tile_v[:, :, :t].contiguous()
             if i == 0 and j == 0:
                 first_audio = out.tensors[1]
 
@@ -1821,23 +1922,33 @@ class LTX25SpatialSplitParams(io.ComfyNode):
             node_id="LTX25SpatialSplitParams",
             display_name="LTX25 Spatial Split Params",
             category="model/latent/ltxv",
-            description="Bundle the spatial tile settings for the 'LTX25 Ultimate Upscale' node: tile size, per-axis overlap and fade, and seam stitching rules (inner loop).",
+            description="Bundle the spatial tile settings for the 'LTX25 Ultimate Upscale' node: tile size, per-axis overlap and fade, and seam stitching rules (inner loop). Two tile sizing modes: explicit pixel sizes, or a row/column count with an auto-solved equal-size tile grid (all tiles identical, edge tiles included); the resolved tile size is exposed as tile_width/tile_height outputs.",
             search_aliases=["ltx25 spatial param", "ltx tile param"],
             inputs=[
+                io.Int.Input("upscale_width", default=1024, min=32, max=100000, step=32,
+                             tooltip="[rows_cols mode] Overall upscaled frame WIDTH in PIXELS that gets split into grid_cols equal-size tile columns. Must be a multiple of 32 and must match the width set in 'LTX25 Latent Upscale Params'. Ignored in specific_size mode."),
+                io.Int.Input("upscale_height", default=1024, min=32, max=100000, step=32,
+                             tooltip="[rows_cols mode] Overall upscaled frame HEIGHT in PIXELS that gets split into grid_rows equal-size tile rows. Must be a multiple of 32 and must match the height set in 'LTX25 Latent Upscale Params'. Ignored in specific_size mode."),
+                io.Combo.Input("tile_size_mode", options=["specific_size", "rows_cols"], default="specific_size",
+                               tooltip="How the tile size is determined. 'specific_size' (default): use tile_width/tile_height below. 'rows_cols': split the frame given by upscale_width/upscale_height into grid_rows x grid_cols EQUAL-SIZE tiles (edge tiles included) - the per-axis overlap is auto-solved (multiple of 32px, one LTX latent token) so every tile ends up exactly the same size; errors out if the solved tiles would be smaller than min_tile_size."),
                 io.Int.Input("tile_width", default=512, min=32, max=100000, step=32,
-                             tooltip="Tile width in PIXELS at the (upscaled) chunk resolution. Must be a multiple of 32 (LTX VAE 32x)."),
+                             tooltip="[specific_size mode] Tile width in PIXELS at the (upscaled) chunk resolution. Must be a multiple of 32 (LTX VAE 32x)."),
                 io.Int.Input("tile_height", default=512, min=32, max=100000, step=32,
-                             tooltip="Tile height in PIXELS at the (upscaled) chunk resolution. Must be a multiple of 32."),
+                             tooltip="[specific_size mode] Tile height in PIXELS at the (upscaled) chunk resolution. Must be a multiple of 32."),
+                io.Int.Input("grid_rows", default=2, min=1, max=9, step=1,
+                             tooltip="[rows_cols mode] Number of tile ROWS along the height axis (1-9)."),
+                io.Int.Input("grid_cols", default=2, min=1, max=9, step=1,
+                             tooltip="[rows_cols mode] Number of tile COLUMNS along the width axis (1-9)."),
                 io.Int.Input("spatial_w_overlap", default=128, min=0, max=100000, step=32,
-                             tooltip="Horizontal overlap in PIXELS between neighbouring tiles. Must be a multiple of 32 and smaller than the tile width."),
+                             tooltip="Horizontal overlap in PIXELS between neighbouring tiles. Must be a multiple of 32 and smaller than the tile width. In rows_cols mode this is the DESIRED overlap; the node auto-solves the actual value."),
                 io.Int.Input("spatial_h_overlap", default=128, min=0, max=100000, step=32,
-                             tooltip="Vertical overlap in PIXELS between neighbouring tiles. Must be a multiple of 32 and smaller than the tile height."),
+                             tooltip="Vertical overlap in PIXELS between neighbouring tiles. Must be a multiple of 32 and smaller than the tile height. In rows_cols mode this is the DESIRED overlap; the node auto-solves the actual value."),
                 io.Int.Input("fade_width", default=32, min=0, max=100000, step=32,
-                             tooltip="Width in PIXELS of the FADE segment (mask 0->1) at the interior edge of the overlap band. The overlap band splits into a FROZEN segment (seam side, mask=0) + this FADE segment (interior side). fade_width sets the fade length; the frozen segment takes the rest. Default 32. Set to 0 to freeze the entire overlap strip."),
+                             tooltip="Width in PIXELS of the FADE segment (mask 0->1) at the interior edge of the overlap band. The overlap band splits into a FROZEN segment (seam side, mask=0) + this FADE segment (interior side). fade_width sets the fade length; the frozen segment takes the rest. Default 32. Set to 0 to freeze the entire overlap strip. Clamped to the solved overlap in rows_cols mode."),
                 io.Int.Input("fade_height", default=32, min=0, max=100000, step=32,
-                             tooltip="Height in PIXELS of the FADE segment (mask 0->1) at the interior edge of the overlap band. See fade_width."),
+                             tooltip="Height in PIXELS of the FADE segment (mask 0->1) at the interior edge of the overlap band. See fade_width. Clamped to the solved overlap in rows_cols mode."),
                 io.Int.Input("min_tile_size", default=256, min=0, max=100000, step=32,
-                             tooltip="Minimum PIXEL size of edge tiles. If a leftover edge tile would be smaller, the last tile is pulled back until it reaches at least this size. Must not exceed the tile size."),
+                             tooltip="Minimum PIXEL size of edge tiles. If a leftover edge tile would be smaller, the last tile is pulled back until it reaches at least this size. Must not exceed the tile size. In rows_cols mode an error is raised if the solved tile size falls below this."),
                 io.Combo.Input("overlap_mode", options=["earlier", "later"], default="earlier",
                                tooltip="Who wins each shared overlap band when stitching. 'earlier' (default): the already-stitched content wins. 'later': the re-sampled tile wins."),
                 io.Combo.Input("overlap_blend", options=["linear", "smoothstep", "overwrite", "midpoint"], default="linear",
@@ -1846,12 +1957,49 @@ class LTX25SpatialSplitParams(io.ComfyNode):
             outputs=[
                 LTX_SPATIAL_PARAM.Output("spatial_split_param",
                     tooltip="Spatial split settings consumed by 'LTX25 Ultimate Upscale'."),
+                io.Int.Output("tile_width",
+                    tooltip="Resolved tile width in PIXELS: the validated input in specific_size mode, or the equal-tile solution computed from upscale_width/grid_cols in rows_cols mode."),
+                io.Int.Output("tile_height",
+                    tooltip="Resolved tile height in PIXELS: the validated input in specific_size mode, or the equal-tile solution computed from upscale_height/grid_rows in rows_cols mode."),
             ],
         )
 
     @classmethod
-    def execute(cls, tile_width, tile_height, spatial_w_overlap, spatial_h_overlap,
-                fade_width, fade_height, min_tile_size, overlap_mode, overlap_blend) -> io.NodeOutput:
+    def execute(cls, upscale_width, upscale_height, tile_size_mode, tile_width,
+                tile_height, grid_rows, grid_cols,
+                spatial_w_overlap, spatial_h_overlap,
+                fade_width, fade_height, min_tile_size, overlap_mode,
+                overlap_blend) -> io.NodeOutput:
+        if tile_size_mode == "rows_cols":
+            # Equal-size grid solved HERE so the tile outputs are always real.
+            # Overlap granularity is one latent token: 32px for LTX.
+            for name, v in (("upscale_width", upscale_width), ("upscale_height", upscale_height)):
+                if v <= 0 or v % 32 != 0:
+                    raise ValueError(f"'{name}' must be a positive multiple of 32 pixels; got {v}.")
+            tw, ow = _solve_equal_tiles(upscale_width, grid_cols, spatial_w_overlap, LTX_VAE_DOWNSAMPLE)
+            th, oh = _solve_equal_tiles(upscale_height, grid_rows, spatial_h_overlap, LTX_VAE_DOWNSAMPLE)
+            if tw < min_tile_size or th < min_tile_size:
+                raise ValueError(
+                    f"rows_cols mode: solved tile size is {th}x{tw}px "
+                    f"(grid {grid_rows}x{grid_cols} over {upscale_height}x{upscale_width}px), "
+                    f"which is smaller than min_tile_size ({min_tile_size}px). "
+                    f"Reduce grid_rows/grid_cols, or lower min_tile_size to at most "
+                    f"{min(tw, th)}px.")
+            param = {
+                "tile_width": tw, "tile_height": th,
+                "spatial_w_overlap": ow, "spatial_h_overlap": oh,
+                "fade_width": min(fade_width, ow),
+                "fade_height": min(fade_height, oh),
+                "min_tile_size": min_tile_size,
+                "overlap_mode": overlap_mode, "overlap_blend": overlap_blend,
+                "tile_size_mode": tile_size_mode,
+                "grid_rows": grid_rows, "grid_cols": grid_cols,
+            }
+            print(f"[LTX25 Spatial Split Params] rows_cols mode: {grid_rows}x{grid_cols} "
+                  f"tiles of {th}x{tw}px over {upscale_height}x{upscale_width}px "
+                  f"(overlap h={oh} w={ow}, fade h={param['fade_height']} w={param['fade_width']})")
+            return io.NodeOutput(param, tw, th)
+
         for name, v in (("tile_width", tile_width), ("tile_height", tile_height),
                         ("spatial_w_overlap", spatial_w_overlap), ("spatial_h_overlap", spatial_h_overlap),
                         ("fade_width", fade_width), ("fade_height", fade_height),
@@ -1874,8 +2022,9 @@ class LTX25SpatialSplitParams(io.ComfyNode):
             "fade_width": fade_width, "fade_height": fade_height,
             "min_tile_size": min_tile_size, "overlap_mode": overlap_mode,
             "overlap_blend": overlap_blend,
+            "tile_size_mode": tile_size_mode,
         }
-        return io.NodeOutput(param)
+        return io.NodeOutput(param, tile_width, tile_height)
 
 
 # ---------------------------------------------------------------------------
@@ -2178,6 +2327,7 @@ class LTX25UltimateUpscale(io.ComfyNode):
         if video.shape[0] != 1:
             raise ValueError("LTX25UltimateUpscale expects a single-video latent (batch 1)")
 
+        # fail early if the upscale target is smaller than the spatial tile size
         if latent_upscale_param is not None and spatial_split_param is not None:
             tile_w = int(spatial_split_param["tile_width"])
             tile_h = int(spatial_split_param["tile_height"])
@@ -2272,12 +2422,15 @@ class LTX25UltimateUpscale(io.ComfyNode):
             cond_i = conditioning
             neg_i = negative
 
-            # --- Optional reference guides (appended after anchoring so anchor
-            #     indices reference pure video tokens, not guide frames) ---
+            # --- Optional reference guides. Appended AFTER anchoring so anchor
+            #     indices reference pure video tokens. With spatial tiling the
+            #     append must happen PER TILE (inside ltx_spatial_process) so the
+            #     keyframe coordinates match each tile's own grid; only the
+            #     whole-chunk branch pre-appends here. ---
             n_guide_frames = 0
             work_v = chunk_v
             video_mask = vmask  # may be None; branches handle the fallback
-            if guides is not None:
+            if guides is not None and spatial_split_param is None:
                 base_mask = vmask if vmask is not None else torch.ones(
                     (1, 1, chunk_v.shape[2], chunk_v.shape[3], chunk_v.shape[4]),
                     device=chunk_v.device, dtype=torch.float32)
@@ -2286,8 +2439,9 @@ class LTX25UltimateUpscale(io.ComfyNode):
 
             if spatial_split_param is not None:
                 chunk_out_v, chunk_out_a, tile_info = ltx_spatial_process(
-                    work_v, chunk_a, cond_i, spatial_split_param,
-                    model, noise, sampler, sigmas, neg_i, cfg, video_mask, bypass_audio,
+                    chunk_v, chunk_a, conditioning, spatial_split_param,
+                    model, noise, sampler, sigmas, negative, cfg, vmask, bypass_audio,
+                    ref_guides=guides,
                 )
                 tile_info = dict(tile_info)
                 tile_info["chunk"] = i
