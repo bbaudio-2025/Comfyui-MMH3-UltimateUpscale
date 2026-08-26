@@ -38,10 +38,16 @@ import comfy.model_management
 import comfy.nested_tensor
 import comfy.sample
 import comfy.samplers
+import comfy.sd
 import comfy.utils
 import folder_paths
 import latent_preview
 from comfy_api.latest import io
+
+try:
+    import comfy_extras.nodes_lt as _ltx_nodes
+except Exception:
+    _ltx_nodes = None
 
 try:
     from comfy.ldm.minimax.model import FRAME_PER_TOKEN, FRAME_RESCALE
@@ -272,9 +278,11 @@ def crop_keyframes_to_tile(cond, src_h, src_w, r0, c0, tr, tc):
                         # Keyframe latent is at a different spatial scale than the
                         # tile source. Resize it to (src_h, src_w) so the crop
                         # produces a keyframe that matches the tile dimensions.
+                        B, C, T, H, W = lt.shape
                         lt_r = torch.nn.functional.interpolate(
-                            lt.to(torch.float32), size=(src_h, src_w),
-                            mode="bilinear", align_corners=False)
+                            lt.to(torch.float32).reshape(B * T, C, H, W),
+                            size=(src_h, src_w), mode="bilinear", align_corners=False,
+                        ).reshape(B, C, T, src_h, src_w)
                         nkf["latent"] = lt_r[:, :, :, r0:r0 + tr, c0:c0 + tc].contiguous()
                     cropped.append(nkf)
                 else:
@@ -375,6 +383,46 @@ def anchor_conditioning(cond, prev_video, f0, strength):
         else:
             nd["minimax_keyframes"] = [anchor_kf]
         nd["minimax_visual_cond_noise_aug"] = aug
+        out.append([tensor, nd])
+    return out
+
+
+def normalize_minimax_refs(cond):
+    """Make minimax_refs blocks SELF-CONSISTENT for the H3 packed layout.
+
+    The model counts frozen rows from two paths that must agree exactly:
+      * PackedLayout reserves ref rows from each block's METADATA
+        (latent_h/latent_w/latent_t) and does NOT check whether the block
+        actually carries a "latent";
+      * cond_video_latents delivers rows from blocks where "latent" EXISTS,
+        sized by the latent's real shape.
+    If an upstream node/version writes metadata that disagrees with the latent
+    (or emits a visual block without a latent), layout reserves one or more
+    phantom frames and sampling crashes with
+    'all_video_rows[~img_update] = cond_video_rows: shape mismatch'.
+    Here we drop visual blocks without a latent and rewrite the metadata from
+    the real latent shape, so both paths can never diverge."""
+    out = []
+    for tensor, d in cond:
+        nd = dict(d)
+        refs = nd.get("minimax_refs")
+        if refs:
+            fixed = []
+            for blk in refs:
+                nblk = dict(blk)
+                lt = nblk.get("latent")
+                if lt is None:
+                    # visual block without a latent would reserve phantom rows
+                    if nblk.get("kind") in ("image", "video", "video_audio"):
+                        continue
+                    fixed.append(nblk)
+                    continue
+                nblk["latent_h"] = int(lt.shape[3])
+                nblk["latent_w"] = int(lt.shape[4])
+                if nblk.get("kind") in ("video", "video_audio"):
+                    nblk["latent_t"] = int(lt.shape[2])
+                fixed.append(nblk)
+            nd["minimax_refs"] = fixed
         out.append([tensor, nd])
     return out
 
@@ -1241,6 +1289,10 @@ class MMH3UltimateUpscale(io.ComfyNode):
         if video.shape[0] != 1:
             raise ValueError("MMH3UltimateUpscale expects a single-video latent (batch 1)")
 
+        # keep the H3 packed layout and cond row counts in lockstep (refs metadata
+        # rewritten from the real latents; phantom latent-less visual refs dropped)
+        conditioning = normalize_minimax_refs(conditioning)
+
         # fail early if the upscale target is smaller than the spatial tile size;
         # tiles can never cover a chunk smaller than one tile, which would only
         # surface as a confusing error during the sampling/stitching phase.
@@ -1359,6 +1411,8 @@ LTX_VIDEO_CHANNELS = 128
 LTX_UPSCALE_PARAM = io.Custom("LTX_UPSCALE_PARAM")
 LTX_TEMPORAL_PARAM = io.Custom("LTX_TEMPORAL_PARAM")
 LTX_SPATIAL_PARAM = io.Custom("LTX_SPATIAL_PARAM")
+LTX_MSR_PARAM = io.Custom("LTX_MSR_REFERENCE_PARAMETERS")
+LTX25_REF_GUIDES = io.Custom("LTX25_REFERENCE_GUIDES")
 
 
 def is_ltx_av_latent(samples):
@@ -1451,6 +1505,82 @@ def ltx_resize_latent(video, width, height):
     up = torch.nn.functional.interpolate(video_bt, size=(h_out, w_out), mode="bilinear", align_corners=False)
     up = up.reshape(video.shape[0], t, c, h_out, w_out).permute(0, 2, 1, 3, 4).contiguous()
     return up
+
+
+# ---------------------------------------------------------------------------
+# LTX2.5 reference guides (native LTXVAddGuide mechanism; MSR-compatible)
+# ---------------------------------------------------------------------------
+
+def ltx_encode_reference(vae, latent_h, latent_w, image, ref_frames):
+    """Encode one reference still into an LTX video guide latent at (latent_h, latent_w).
+
+    Mirrors LTXVAddGuide.encode for a repeated still: resize (center-crop) to the
+    chunk's pixel grid, repeat to ref_frames pixel frames (snapped to 8k+1), encode.
+    After encoding, the guide is spatially resized to EXACTLY (latent_h, latent_w) to
+    avoid any VAE rounding mismatch. Returns (guide_latent [B,128,F,H,W], scale_factors)."""
+    time_scale, width_scale, height_scale = vae.downscale_index_formula
+    repeated = image.repeat(ref_frames, 1, 1, 1)
+    keep = ((repeated.shape[0] - 1) // time_scale) * time_scale + 1
+    repeated = repeated[:keep]
+    target_w = int(latent_w * width_scale)
+    target_h = int(latent_h * height_scale)
+    pixels = comfy.utils.common_upscale(
+        repeated.movedim(-1, 1), target_w, target_h, "bilinear", crop="center").movedim(1, -1)
+    pixels = pixels[..., :3]
+    guide = vae.encode(pixels)
+    if guide.shape[3] != latent_h or guide.shape[4] != latent_w:
+        B, C, T, H, W = guide.shape
+        guide = F.interpolate(
+            guide.reshape(B * C * T, 1, H, W),
+            size=(latent_h, latent_w), mode="bilinear", align_corners=False
+        ).reshape(B, C, T, latent_h, latent_w)
+    return guide, vae.downscale_index_formula
+
+
+def ltx_msr_slot_embedding(slot_state, slot_id, device, dtype):
+    """Fourier-MLP reference-slot embedding from an MSR LoRA checkpoint
+    (same convention as ComfyUI-LTX2.5-MSR: slot_id / 16 -> sin/cos features -> MLP)."""
+    frequencies = slot_state["frequencies"].to(device=device, dtype=torch.float32)
+    scaled = torch.tensor([float(slot_id) / 16.0], device=device, dtype=torch.float32)
+    phases = scaled * frequencies
+    features = torch.cat((scaled, torch.sin(phases), torch.cos(phases)))
+    w0 = slot_state["net.0.weight"].to(device=device, dtype=torch.float32)
+    b0 = slot_state["net.0.bias"].to(device=device, dtype=torch.float32)
+    hidden = F.silu(F.linear(features, w0, b0))
+    w2 = slot_state["net.2.weight"].to(device=device, dtype=torch.float32)
+    b2 = slot_state["net.2.bias"].to(device=device, dtype=torch.float32)
+    return F.linear(hidden, w2, b2).to(dtype=dtype)
+
+
+def ltx_append_guides(chunk_v, video_mask, positive, negative, ref_guides):
+    """Append reference guide frames to one chunk via the native LTXVAddGuide mechanism.
+
+    `ref_guides` is the LTX25ReferenceParams output bundle (guides / offsets /
+    scale_factors / strength). Each guide latent is first spatially resized to the
+    chunk's exact grid, then appended: guides sit at the END of the latent while
+    their recorded keyframe positions are restored by RoPE inside the model; the
+    noise_mask marks guide frames with 1 - strength so they act as near-clean
+    conditioning tokens. Returns (work_v, video_mask, positive, negative, appended_frames).
+    `positive`/`negative` inputs stay untouched (conditioning_set_values copies)."""
+    if _ltx_nodes is None:
+        raise RuntimeError("This ComfyUI build does not expose comfy_extras.nodes_lt (LTX guide support).")
+    if negative is None:
+        negative = positive  # cfg-less run: this branch's conds are discarded anyway
+    strength = float(ref_guides["strength"])
+    scale_factors = ref_guides["scale_factors"]
+    _, _, Tv, H, W = chunk_v.shape
+    appended = 0
+    for gl, offset in zip(ref_guides["guides"], ref_guides["offsets"]):
+        gl = gl.to(dtype=chunk_v.dtype, device=chunk_v.device)
+        if gl.shape[3] != H or gl.shape[4] != W:
+            B, C, T, Gh, Gw = gl.shape
+            gl = F.interpolate(gl.reshape(B * C * T, 1, Gh, Gw), size=(H, W),
+                               mode="bilinear", align_corners=False).reshape(B, C, T, H, W)
+        positive, negative, chunk_v, video_mask = _ltx_nodes.LTXVAddGuide.append_keyframe(
+            positive, negative, offset, chunk_v, video_mask, gl,
+            strength, scale_factors, causal_fix=True)
+        appended += gl.shape[2]
+    return chunk_v, video_mask, positive, negative, appended
 
 
 def ltx_temporal_append(acc_v, acc_a, chunk_v, chunk_a, index, k0):
@@ -1749,6 +1879,222 @@ class LTX25SpatialSplitParams(io.ComfyNode):
 
 
 # ---------------------------------------------------------------------------
+# LTX2.5 MSR IC-LoRA Loader (copied from ComfyUI-LTX2.5-MSR so users don't
+# need that package installed; output type matches its original loader)
+# ---------------------------------------------------------------------------
+
+_LTX_SLOT_PREFIXES = (
+    "diffusion_model.reference_slot_embedding.",
+    "reference_slot_embedding.",
+)
+
+
+def _ltx_metadata_bool(metadata, key, default=False):
+    value = metadata.get(key, default)
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "on"}
+    return bool(value)
+
+
+def _ltx_extract_slot_state(lora):
+    state = {}
+    normal_lora = {}
+    for key, value in lora.items():
+        matched = False
+        for prefix in _LTX_SLOT_PREFIXES:
+            if key.startswith(prefix):
+                state[key[len(prefix):]] = value.detach().cpu()
+                matched = True
+                break
+        if not matched:
+            normal_lora[key] = value
+    return normal_lora, state
+
+
+def _ltx_validate_slot_state(state, metadata):
+    required = {
+        "frequencies",
+        "net.0.weight",
+        "net.0.bias",
+        "net.2.weight",
+        "net.2.bias",
+    }
+    missing = sorted(required.difference(state))
+    enabled = _ltx_metadata_bool(metadata, "reference_slot_embedding_enabled", bool(state))
+    if enabled and missing:
+        raise ValueError(
+            "MSR LoRA declares reference slot embeddings, but these tensors are missing: "
+            + ", ".join(missing)
+        )
+    if not state:
+        raise ValueError(
+            "This LoRA does not contain reference_slot_embedding weights and is not an "
+            "MSR multi-reference checkpoint."
+        )
+
+
+class LTX25ICLoRALoader(io.ComfyNode):
+    """Load an MSR multi-reference IC-LoRA for LTX2.5.
+
+    Applies the regular LoRA weights to the model and extracts the learned
+    Fourier-MLP reference-slot embedding tensors, which 'LTX25 Reference Params'
+    uses to embed each reference still into its own slot. The output type is
+    compatible with the ComfyUI-LTX2.5-MSR package's IC-LoRA Loader."""
+
+    @classmethod
+    def define_schema(cls):
+        return io.Schema(
+            node_id="LTX25ICLoRALoader",
+            display_name="LTX25 IC-LoRA Loader (MSR)",
+            category="model/latent/ltxv",
+            description=(
+                "Load an LTX2.5 MSR multi-reference IC-LoRA: the regular weights are "
+                "applied to the diffusion model and the learned reference-slot "
+                "embedding is extracted for 'LTX25 Reference Params'. Connect this "
+                "node instead of the ComfyUI-LTX2.5-MSR loader - no extra package "
+                "required."
+            ),
+            search_aliases=["ltx25 ic-lora", "msr lora loader", "multi-reference lora"],
+            inputs=[
+                io.Model.Input("model",
+                               tooltip="The LTX2.5 diffusion model the LoRA is applied to."),
+                io.Combo.Input("lora_name", options=folder_paths.get_filename_list("loras"),
+                               tooltip="The MSR multi-reference LoRA checkpoint from your loras folder."),
+                io.Float.Input("strength_model", default=1.0, min=-100.0, max=100.0, step=0.01,
+                               tooltip="How strongly the regular LoRA weights affect the model."),
+            ],
+            outputs=[
+                io.Model.Output("model",
+                                tooltip="The model with the LoRA's regular weights applied."),
+                LTX_MSR_PARAM.Output("msr_parameters",
+                                     tooltip="Reference-slot parameters for 'LTX25 Reference Params' (same wire type as the ComfyUI-LTX2.5-MSR IC-LoRA Loader)."),
+            ],
+        )
+
+    @classmethod
+    def execute(cls, model, lora_name, strength_model):
+        lora_path = folder_paths.get_full_path_or_raise("loras", lora_name)
+        lora, metadata = comfy.utils.load_torch_file(lora_path, safe_load=True, return_metadata=True)
+        metadata = metadata or {}
+        normal_lora, slot_state = _ltx_extract_slot_state(lora)
+        _ltx_validate_slot_state(slot_state, metadata)
+
+        if strength_model != 0:
+            loaded_model, _ = comfy.sd.load_lora_for_models(
+                model, None, normal_lora, strength_model, 0, lora_metadata=metadata)
+        else:
+            loaded_model = model
+
+        params = {
+            "slot_state": slot_state,
+            "metadata": dict(metadata),
+            "lora_name": lora_name,
+            "reference_downscale_factor": max(
+                1, round(float(metadata.get("reference_downscale_factor", 1)))
+            ),
+            # ComfyUI compatibility mode intentionally uses its established
+            # guide coordinates for every checkpoint, including LoRAs whose
+            # training metadata records another temporal scale.
+            "reference_temporal_scale_factor": 1,
+        }
+        print(f"[LTX25ICLoRALoader] Loaded {lora_name} with learned reference slot "
+              f"embedding ({len(slot_state)} tensors), reference_downscale_factor="
+              f"{params['reference_downscale_factor']}")
+        return io.NodeOutput(loaded_model, params)
+
+
+class LTX25ReferenceParams(io.ComfyNode):
+    """Encode reference stills into LTX2.5 guide latents for 'LTX25 Ultimate Upscale'.
+
+    Works with or without ComfyUI-LTX2.5-MSR: with the MSR IC-LoRA Loader output
+    connected, learned slot embeddings are applied and consecutive negative temporal
+    offsets are assigned (MSR training layout); without it, plain guides at offset 0.
+    The guides are encoded ONCE here; the main upscale node resizes them to each
+    chunk's grid and appends them as near-clean conditioning tokens."""
+
+    @classmethod
+    def define_schema(cls):
+        return io.Schema(
+            node_id="LTX25ReferenceParams",
+            display_name="LTX25 Reference Params",
+            category="model/latent/ltxv",
+            description=(
+                "Encode reference stills (each BATCH item = one reference) into LTX2.5 "
+                "guide latents for 'LTX25 Ultimate Upscale'. Connect the output to the "
+                "main node's 'reference_guides' input to pin identity/scene consistency "
+                "across independently sampled chunks. Optionally connect an MSR IC-LoRA "
+                "Loader output to use MSR slot embeddings and offsets."
+            ),
+            search_aliases=["ltx25 reference", "ltx25 msr params", "reference image guide", "ic-lora params"],
+            inputs=[
+                io.Image.Input("ref_images",
+                               tooltip="Reference stills; each BATCH item is one reference (order = MSR slot order). Encoded once at this node."),
+                io.Vae.Input("ref_vae",
+                             tooltip="The LTX2.5 VIDEO VAE used to encode the references."),
+                LTX_MSR_PARAM.Input("msr_parameters", optional=True,
+                                    tooltip="Optional output of an MSR IC-LoRA loader: either this pack's 'LTX25 IC-LoRA Loader (MSR)' or the ComfyUI-LTX2.5-MSR package's 'IC-LoRA Loader' (same wire type). Adds learned slot embeddings and consecutive negative temporal offsets (MSR training layout). Leave unconnected for plain guides at offset 0."),
+                io.Float.Input("ref_strength", default=1.0, min=0.0, max=1.0, step=0.01,
+                               tooltip="Reference guide conditioning strength: noise_mask value = 1 - strength (1.0 = guides stay fully clean/frozen; lower values let them drift slightly)."),
+                io.Combo.Input("ref_frames", options=["25", "33"], default="33",
+                               tooltip="Pixel frames each still is repeated to before encoding (25 -> 4 latent frames per reference, 33 -> 5)."),
+            ],
+            outputs=[
+                LTX25_REF_GUIDES.Output("reference_guides",
+                                        tooltip="Encoded reference guides consumed by 'LTX25 Ultimate Upscale'."),
+            ],
+        )
+
+    @classmethod
+    def execute(cls, ref_images, ref_vae, msr_parameters=None,
+                ref_strength=1.0, ref_frames="33"):
+        if _ltx_nodes is None:
+            raise RuntimeError("This ComfyUI build does not expose comfy_extras.nodes_lt (LTX guide support).")
+        n = int(ref_images.shape[0])
+        if n < 1:
+            raise ValueError("ref_images must contain at least one image")
+        ref_frames_n = int(ref_frames)
+        if ref_frames_n not in (25, 33):
+            raise ValueError(f"ref_frames must be 25 or 33, got {ref_frames}")
+        msr_enabled = msr_parameters is not None
+        dsf = 1
+        if msr_enabled:
+            try:
+                dsf = max(1, round(float(msr_parameters.get("reference_downscale_factor", 1))))
+            except (TypeError, ValueError):
+                dsf = 1
+            if dsf != 1:
+                raise ValueError(
+                    f"reference_downscale_factor={dsf} MSR LoRAs are not supported in "
+                    "the chunked pipeline; use a factor-1 MSR checkpoint.")
+        # Encode each still at its own pixel size snapped to the VAE grid; the main
+        # node spatially resizes the resulting latents to each chunk's grid anyway.
+        _, width_scale, height_scale = ref_vae.downscale_index_formula
+        h_px, w_px = int(ref_images.shape[1]), int(ref_images.shape[2])
+        latent_h = max(1, round(h_px / height_scale))
+        latent_w = max(1, round(w_px / width_scale))
+        guides = []
+        for idx in range(n):
+            guide, scale_factors = ltx_encode_reference(
+                ref_vae, latent_h, latent_w, ref_images[idx:idx + 1], ref_frames_n)
+            if msr_enabled:
+                emb = ltx_msr_slot_embedding(
+                    msr_parameters["slot_state"], idx + 1, guide.device, guide.dtype)
+                if emb.numel() != guide.shape[1]:
+                    raise ValueError(
+                        f"MSR slot embedding dim {emb.numel()} != latent channels {guide.shape[1]}")
+                guide = guide + emb.view(1, -1, 1, 1, 1)
+            guides.append(guide.cpu().contiguous())
+        return io.NodeOutput({
+            "guides": guides,
+            "offsets": [-(n - idx) for idx in range(n)] if msr_enabled else [0] * n,
+            "scale_factors": scale_factors,
+            "strength": float(ref_strength),
+        })
+
+
+# ---------------------------------------------------------------------------
 # LTX2.5 main node
 # ---------------------------------------------------------------------------
 
@@ -1773,6 +2119,11 @@ class LTX25UltimateUpscale(io.ComfyNode):
                 "selects the strategy: 'full' pins the whole overlap band (original behaviour), "
                 "'first_frame' pins only the first token and blends across the band (H3-style), "
                 "'ramp' applies a linear temporal fade across the band. "
+                "OPTIONAL reference guides: connect 'reference_guides' from 'LTX25 Reference Params' "
+                "to anchor identity/scene consistency across chunks - the encoded reference "
+                "stills are appended to every chunk as near-clean guide tokens (native "
+                "LTXVAddGuide mechanism), optionally with MSR slot embeddings when an "
+                "IC-LoRA Loader output is wired into the param node. "
                 "Audio: by default the INPUT audio is carried unchanged (bypass_audio); "
                 "disable it to let the model RE-SAMPLE audio (with spatial tiling the first "
                 "tile's audio is taken per time block, chunks cross-faded). "
@@ -1799,6 +2150,8 @@ class LTX25UltimateUpscale(io.ComfyNode):
                                           tooltip="Output of 'LTX25 Temporal Split Params'. Leave unconnected to process the latent as a single chunk. When connected, the next chunk's overlap is anchored to the previous chunk (strategy selected by 'anchor_mode': full band / first frame only / temporal ramp) and joined by cross-fade."),
                 LTX_SPATIAL_PARAM.Input("spatial_split_param", optional=True,
                                          tooltip="Output of 'LTX25 Spatial Split Params'. Leave unconnected to sample each chunk whole (no tiling)."),
+                LTX25_REF_GUIDES.Input("reference_guides", optional=True,
+                                       tooltip="Optional output of 'LTX25 Reference Params'. When connected, the encoded reference stills are appended to EVERY chunk as near-clean guide tokens (native LTXVAddGuide mechanism), pinning identity/scene consistency across independently sampled chunks. Leave unconnected for the previous behaviour."),
                 io.Boolean.Input("bypass_audio", default=True,
                                   tooltip="Audio handling. True = the output audio is the INPUT audio carried unchanged (frozen, never re-sampled). False = the audio is RE-SAMPLED by the model; with spatial tiling the FIRST tile's audio is taken for each time block, and consecutive chunks are cross-faded. Re-sampling costs extra compute but lets the model regenerate audio for the enhanced video."),
             ],
@@ -1815,7 +2168,8 @@ class LTX25UltimateUpscale(io.ComfyNode):
     def execute(cls, latent, conditioning, model, noise, sampler, sigmas,
                 negative=None, cfg=1.0,
                 temporal_split_param=None, spatial_split_param=None,
-                latent_upscale_param=None, bypass_audio=True) -> io.NodeOutput:
+                latent_upscale_param=None, bypass_audio=True,
+                reference_guides=None) -> io.NodeOutput:
         samples = latent["samples"]
         if not is_ltx_av_latent(samples):
             raise ValueError("LTX25UltimateUpscale expects an LTX2.5 AV latent (nested video [B,128,T,H,W] + audio)")
@@ -1848,6 +2202,9 @@ class LTX25UltimateUpscale(io.ComfyNode):
             anchor_strength = 0.0
             anchor_mode = "full"
 
+        # --- Optional reference guides (LTX25ReferenceParams output) ---
+        guides = reference_guides
+
         acc_v = None
         acc_a = None
         segments_debug = []
@@ -1873,8 +2230,6 @@ class LTX25UltimateUpscale(io.ComfyNode):
                 th_ = int(latent_upscale_param.get("height"))
                 chunk_v = ltx_resize_latent(chunk_v, tw_, th_)
                 upscaled = True
-
-            cond_i = conditioning  # T2V: no re-anchor, no spatial cropping
 
             # --- Temporal keyframe anchoring (LTX image-to-video analogue of MMH3
             #     anchor_conditioning): pin part of the next chunk's overlap to the
@@ -1914,28 +2269,48 @@ class LTX25UltimateUpscale(io.ComfyNode):
                         chunk_v[:, :, :n] = prev
                         vmask[:, :, :n] = 1.0 - anchor_strength
 
+            cond_i = conditioning
+            neg_i = negative
+
+            # --- Optional reference guides (appended after anchoring so anchor
+            #     indices reference pure video tokens, not guide frames) ---
+            n_guide_frames = 0
+            work_v = chunk_v
+            video_mask = vmask  # may be None; branches handle the fallback
+            if guides is not None:
+                base_mask = vmask if vmask is not None else torch.ones(
+                    (1, 1, chunk_v.shape[2], chunk_v.shape[3], chunk_v.shape[4]),
+                    device=chunk_v.device, dtype=torch.float32)
+                work_v, video_mask, cond_i, neg_i, n_guide_frames = ltx_append_guides(
+                    chunk_v, base_mask, conditioning, negative, guides)
+
             if spatial_split_param is not None:
                 chunk_out_v, chunk_out_a, tile_info = ltx_spatial_process(
-                    chunk_v, chunk_a, cond_i, spatial_split_param,
-                    model, noise, sampler, sigmas, negative, cfg, vmask, bypass_audio,
+                    work_v, chunk_a, cond_i, spatial_split_param,
+                    model, noise, sampler, sigmas, neg_i, cfg, video_mask, bypass_audio,
                 )
                 tile_info = dict(tile_info)
                 tile_info["chunk"] = i
                 tiles_debug.append(tile_info)
             else:
-                piece = {"samples": comfy.nested_tensor.NestedTensor((chunk_v, chunk_a))}
+                piece = {"samples": comfy.nested_tensor.NestedTensor((work_v, chunk_a))}
                 # Audio mask: 0 = frozen (bypass, carried unchanged), 1 = re-sampled.
                 # Always attach a nested noise_mask (video + audio) so the mask
                 # structure matches the nested latent. Video is anchored (vmask) when
                 # a temporal anchor exists, else fully re-sampled (ones).
                 amask = torch.zeros_like(chunk_a) if bypass_audio else torch.ones_like(chunk_a)
-                vmask_out = vmask if vmask is not None else torch.ones(
-                    (1, 1, chunk_v.shape[2], chunk_v.shape[3], chunk_v.shape[4]),
-                    device=chunk_v.device, dtype=torch.float32)
+                vmask_out = video_mask if video_mask is not None else torch.ones(
+                    (1, 1, work_v.shape[2], work_v.shape[3], work_v.shape[4]),
+                    device=work_v.device, dtype=torch.float32)
                 piece["noise_mask"] = comfy.nested_tensor.NestedTensor((vmask_out, amask))
-                out = sample_piece(piece, cond_i, model, noise, sampler, sigmas, negative, cfg)
+                out = sample_piece(piece, cond_i, model, noise, sampler, sigmas, neg_i, cfg)
                 chunk_out_v = out.tensors[0]
                 chunk_out_a = chunk_a if bypass_audio else out.tensors[1]
+
+            # Strip appended guide frames from the sampled result (guides sit at
+            # the END of the latent sequence after ltx_append_guides).
+            if n_guide_frames > 0:
+                chunk_out_v = chunk_out_v[:, :, :chunk_v.shape[2]].contiguous()
 
             acc_v, acc_a = ltx_temporal_append(acc_v, acc_a, chunk_out_v, chunk_out_a, i, k0)
 
@@ -1947,8 +2322,9 @@ class LTX25UltimateUpscale(io.ComfyNode):
                 "upscaled": upscaled,
                 "anchor_mode": anchor_mode if i > 0 else None,
                 "anchored_tokens": anchored,
-                "spatial_h": chunk_v.shape[3],
-                "spatial_w": chunk_v.shape[4],
+                "guide_frames": n_guide_frames,
+                "spatial_h": work_v.shape[3],
+                "spatial_w": work_v.shape[4],
             })
 
         if bypass_audio:
