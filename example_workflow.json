@@ -1814,10 +1814,10 @@
         "Node name for S&R": "ComfyMathExpression"
       },
       "widgets_values": [
-        "a == 1"
+        "a == 0"
       ],
       "widgets_values_named": {
-        "expression": "a == 1"
+        "expression": "a == 0"
       }
     },
     {
