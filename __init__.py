@@ -45,7 +45,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "MMH3TemporalSplitParams": "MMH3 Temporal Split Params",
     "MMH3SpatialSplitParams": "MMH3 Spatial Split Params",
     "MMH3FunControlnetParams": "MMH3 Fun Controlnet Params",
-    "MMH3SpatialInpaintParams": "MMH3 Spatial Inpaint Params",
+    "MMH3SpatialInpaintParams": "MMH3 Fun Controlnet Inpaint",
     "LTX25UltimateUpscale": "LTX25 Ultimate Upscale",
     "LTX25LatentUpscaleParams": "LTX25 Latent Upscale Params",
     "LTX25TemporalSplitParams": "LTX25 Temporal Split Params",
