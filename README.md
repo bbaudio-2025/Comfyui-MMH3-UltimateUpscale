@@ -10,6 +10,7 @@ MiniMax H3 generates video as a nested latent that bundles 24-channel video **an
 
 ## Changelog
 
+- **20260829 - Add new nodes about Fun ControlNet to enhance performance.** Two nodes "MMH3 Fun Controlnet Inpaint" and "MMH3 Spatial Inpaint Params", which help seamless spatial stitching and better consistance in higher denoise condition. To use these nodes you have to merge [kijai's pull request](https://github.com/Comfy-Org/ComfyUI/pull/15860) in comfyui.
 - **20260825 - New experimental `LTX25 Ultimate Upscale` node.** Built on top of the MMH3 pipeline, it now also supports LTX2.5 nested AV latents (video `[B,128,T,H,W]` + audio `[B,C,time,freq]`) in a single node: temporal split -> latent upscale (fixed 2x model upscale, then interpolated to the target width/height) -> spatial split -> per-tile sampling -> stitch. Three optional param nodes are provided: `LTX25 Latent Upscale Params`, `LTX25 Temporal Split Params`, and `LTX25 Spatial Split Params`. Audio is buggy so you should use original audio latent. These nodes are highly experimental, so don't rely on them.
 
 ---
