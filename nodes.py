@@ -1091,10 +1091,11 @@ def spatial_process(chunk_v, chunk_a, cond, sp, model, noise, sampler, sigmas, n
             tile = torch.zeros((1, c, t, tr_s, tc_s), device=chunk_v.device, dtype=chunk_v.dtype)
             tile[:, :, :, :tr, :tc] = chunk_v[:, :, :, r0:r0 + tr, c0:c0 + tc]
             # pre-fill done-overlap strips from the accumulated re-sampled result
+            # (only the real extent; the even-pad strip is frozen and left as-is)
             if j > 0 and ovw > 0:
-                tile[:, :, :, :, :ovw] = acc_v[:, :, :, r0:r0 + tr, c0:c0 + ovw]
+                tile[:, :, :, :tr, :ovw] = acc_v[:, :, :, r0:r0 + tr, c0:c0 + ovw]
             if i > 0 and ovh > 0:
-                tile[:, :, :, :ovh, :] = acc_v[:, :, :, r0:r0 + ovh, c0:c0 + tc]
+                tile[:, :, :, :ovh, :tc] = acc_v[:, :, :, r0:r0 + ovh, c0:c0 + tc]
 
             m = spatial_fade_mask(tr_s, tc_s, ovh, ovw,
                                   done_top=(i > 0), done_left=(j > 0),
