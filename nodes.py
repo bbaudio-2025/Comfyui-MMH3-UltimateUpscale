@@ -1518,7 +1518,7 @@ class MMH3SpatialInpaintParams(io.ComfyNode):
     def define_schema(cls):
         return io.Schema(
             node_id="MMH3SpatialInpaintParams",
-            display_name="MMH3 Spatial Inpaint Params",
+            display_name="MMH3 Fun Controlnet Inpaint",
             category="model/latent/minimax",
             description=(
                 "Bundle Fun ControlNet inpaint settings for the 'MMH3 Ultimate "
