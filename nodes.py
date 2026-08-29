@@ -34,6 +34,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+import comfy.controlnet
+import comfy.ldm.common_dit
 import comfy.model_management
 import comfy.nested_tensor
 import comfy.sample
@@ -58,6 +60,8 @@ except Exception:
 H3_UPSCALE_PARAM = io.Custom("H3_UPSCALE_PARAM")
 H3_TEMPORAL_PARAM = io.Custom("H3_TEMPORAL_PARAM")
 H3_SPATIAL_PARAM = io.Custom("H3_SPATIAL_PARAM")
+H3_FUN_CONTROL_PARAM = io.Custom("H3_FUN_CONTROL_PARAM")
+H3_INPAINT_PARAM = io.Custom("H3_INPAINT_PARAM")
 
 # Spatial compression factor of the Minimax H3 3D VAE (16x).
 VAE_DOWNSAMPLE = 16
@@ -305,7 +309,11 @@ def crop_keyframes_to_tile(cond, src_h, src_w, r0, c0, tr, tc):
                 if lt is not None:
                     kh, kw = lt.shape[3], lt.shape[4]
                     if kh == src_h and kw == src_w:
-                        nkf["latent"] = lt[:, :, :, r0:r0 + tr, c0:c0 + tc].contiguous()
+                        # The model pads the target latent to the 2x2 spatial patch
+                        # grid but its cond path does not, so the cropped keyframe
+                        # must be padded to the same even grid or patchify fails.
+                        crop = lt[:, :, :, r0:r0 + tr, c0:c0 + tc].contiguous()
+                        nkf["latent"] = comfy.ldm.common_dit.pad_to_patch_size(crop, (1, 2, 2))
                     else:
                         # Keyframe latent is at a different spatial scale than the
                         # tile source. Resize it to (src_h, src_w) so the crop
@@ -315,7 +323,8 @@ def crop_keyframes_to_tile(cond, src_h, src_w, r0, c0, tr, tc):
                             lt.to(torch.float32).reshape(B * T, C, H, W),
                             size=(src_h, src_w), mode="bilinear", align_corners=False,
                         ).reshape(B, C, T, src_h, src_w)
-                        nkf["latent"] = lt_r[:, :, :, r0:r0 + tr, c0:c0 + tc].contiguous()
+                        nkf["latent"] = comfy.ldm.common_dit.pad_to_patch_size(
+                            lt_r[:, :, :, r0:r0 + tr, c0:c0 + tc].contiguous(), (1, 2, 2))
                     cropped.append(nkf)
                 else:
                     cropped.append(nkf)
@@ -908,6 +917,83 @@ def sample_piece(piece, cond, model, noise, sampler, sigmas, negative, cfg):
     return samples
 
 
+def _resize_images(frames, height, width):
+    """Bilinear-resize pixel frames [T, C, H, W] to [T, C, height, width]."""
+    B, C = frames.shape[0], frames.shape[1]
+    return F.interpolate(
+        frames.reshape(B, C, frames.shape[2], frames.shape[3]),
+        size=(height, width), mode="bilinear", align_corners=False)
+
+
+def _chunk_fun_control(param, f0, f1, fc_buffer):
+    """Resolve the control video for one chunk [f0, f1) honouring the upscale mode.
+
+    Returns ([T', C, H, W], mode). For 'per_chunk'/'all' the returned frames are
+    already upscaled to the target size (either for the chunk or the whole
+    video); for 'per_tile' they stay low-res so each tile crops+upscales only
+    its own piece."""
+    lo = param["control_video"]
+    up_h, up_w = param["upscale_height"], param["upscale_width"]
+    mode = param["control_upscale_mode"]
+    if mode == "all":
+        return fc_buffer[f0:f1], mode
+    chunk_lo = lo[f0:f1]
+    if mode == "per_chunk":
+        return _resize_images(chunk_lo, up_h, up_w), mode
+    return chunk_lo, mode  # per_tile: low-res kept
+
+
+def _tile_fun_control(param, chunk_ctrl, mode, r0, c0, tr, tc):
+    """Crop a chunk control representation to a tile's spatial window.
+
+    For 'per_tile' the chunk frames are low-res: map the tile's upscale-pixel
+    window back to low-res, crop it, and upscale the small crop to the tile's
+    upscale footprint (no full upscale frame is ever materialized). For
+    'per_chunk'/'all' the chunk frames are already at the upscale size, so the
+    upscale-pixel window is cropped directly."""
+    up_h, up_w = param["upscale_height"], param["upscale_width"]
+    if mode == "per_tile":
+        lo_h, lo_w = chunk_ctrl.shape[2], chunk_ctrl.shape[3]
+        pr1 = min((r0 + tr) * VAE_DOWNSAMPLE * lo_h // up_h, lo_h)
+        pc1 = min((c0 + tc) * VAE_DOWNSAMPLE * lo_w // up_w, lo_w)
+        crop = chunk_ctrl[:, :, r0 * VAE_DOWNSAMPLE * lo_h // up_h:pr1,
+                          c0 * VAE_DOWNSAMPLE * lo_w // up_w:pc1]
+        return _resize_images(crop, tr * VAE_DOWNSAMPLE, tc * VAE_DOWNSAMPLE)
+    pr1 = min((r0 + tr) * VAE_DOWNSAMPLE, up_h)
+    pc1 = min((c0 + tc) * VAE_DOWNSAMPLE, up_w)
+    return chunk_ctrl[:, :, r0 * VAE_DOWNSAMPLE:pr1, c0 * VAE_DOWNSAMPLE:pc1]
+
+
+def inject_fun_control(cond, control_net, vae, control_video, strength, start_percent, end_percent):
+    """Drive the conditioning's control field with a fresh MiniMax H3 Fun
+    ControlNet copy carrying the given pixel control video."""
+    c_net = control_net.copy()
+    c_net.set_cond_hint(control_video, strength, (start_percent, end_percent), vae=vae)
+    return apply_control(cond, c_net)
+
+
+def apply_control(cond, c_net):
+    """Set the conditioning's control field to a ready controlnet copy."""
+    out = []
+    for tensor, d in cond:
+        nd = dict(d)
+        nd["control"] = c_net
+        nd["control_apply_to_uncond"] = True
+        out.append([tensor, nd])
+    return out
+
+
+def _build_fun_net(fun_control, r0, c0, tr, tc):
+    """Build one fresh Fun ControlNet copy carrying the tile's cropped control
+    video (the hint cache is keyed on size only, so each tile needs its own)."""
+    tile_hint = _tile_fun_control(fun_control, fun_control["chunk_ctrl"],
+                                  fun_control["mode"], r0, c0, tr, tc)
+    c_net = fun_control["control_net"].copy()
+    c_net.set_cond_hint(tile_hint, fun_control["strength"],
+                        (fun_control["start_percent"], fun_control["end_percent"]), vae=fun_control["vae"])
+    return c_net
+
+
 # ---------------------------------------------------------------------------
 # stitching helpers
 # ---------------------------------------------------------------------------
@@ -953,7 +1039,8 @@ def temporal_append(acc_v, acc_a, chunk_v, chunk_a, index, k0, f0):
     return result_v, result_a
 
 
-def spatial_process(chunk_v, chunk_a, cond, sp, model, noise, sampler, sigmas, negative, cfg):
+def spatial_process(chunk_v, chunk_a, cond, sp, model, noise, sampler, sigmas, negative, cfg,
+                    fun_control=None, inpaint=None):
     """Inner loop: spatial split -> per-tile sampling -> spatial stitch.
     Mirrors the spatial split/extract/append trio. Audio is carried unchanged
     (frozen in every tile, never re-sampled). Returns (reassembled_video, info)."""
@@ -994,18 +1081,26 @@ def spatial_process(chunk_v, chunk_a, cond, sp, model, noise, sampler, sigmas, n
             tr, tc = trows[i], tcols[j]
             ovh = row_ovl[i]
             ovw = col_ovl[j]
+            # The model patches the latent on a 2x2 grid, so every tile must be
+            # sampled at even spatial dims or its internal pad shifts the patch
+            # grid off the neighbour's and leaves a seam. Odd edge tiles (only the
+            # last row/col, when the source dim is odd) are padded up to even; the
+            # added strip is frozen and never written back.
+            tr_s, tc_s = tr + (tr % 2), tc + (tc % 2)
 
-            tile = torch.zeros((1, c, t, tr, tc), device=chunk_v.device, dtype=chunk_v.dtype)
-            tile[:, :, :, :, :] = chunk_v[:, :, :, r0:r0 + tr, c0:c0 + tc]
+            tile = torch.zeros((1, c, t, tr_s, tc_s), device=chunk_v.device, dtype=chunk_v.dtype)
+            tile[:, :, :, :tr, :tc] = chunk_v[:, :, :, r0:r0 + tr, c0:c0 + tc]
             # pre-fill done-overlap strips from the accumulated re-sampled result
             if j > 0 and ovw > 0:
                 tile[:, :, :, :, :ovw] = acc_v[:, :, :, r0:r0 + tr, c0:c0 + ovw]
             if i > 0 and ovh > 0:
                 tile[:, :, :, :ovh, :] = acc_v[:, :, :, r0:r0 + ovh, c0:c0 + tc]
 
-            m = spatial_fade_mask(tr, tc, ovh, ovw,
+            m = spatial_fade_mask(tr_s, tc_s, ovh, ovw,
                                   done_top=(i > 0), done_left=(j > 0),
                                   fade_h=fh, fade_w=fw)
+            m[tr:tr_s, :] = 0.0
+            m[:, tc:tc_s] = 0.0
             mv = m[None, None, None]
             ma = torch.zeros((1, 32, 2, ta), device=chunk_a.device, dtype=chunk_a.dtype)
             piece = {
@@ -1014,8 +1109,36 @@ def spatial_process(chunk_v, chunk_a, cond, sp, model, noise, sampler, sigmas, n
             }
 
             cond_tile = crop_keyframes_to_tile(cond, h, w, r0, c0, tr, tc)
+            c_net = None
+            if fun_control is not None:
+                # crop the per-chunk control to this tile's spatial window (per the
+                # upscale mode), then drive a fresh controlnet copy - the control
+                # hint cache is keyed on size only, so tiles must not share one object
+                c_net = _build_fun_net(fun_control, r0, c0, tr, tc)
+            if inpaint is not None and (i > 0 or j > 0):
+                # Latent-space inpaint: the controlnet's inpaint channel is
+                # masked_latent == encode(source * visibility), where source is the
+                # already-sampled neighbour content on the kept seams. The VAE
+                # encoder is linear, so encode(source * visibility) == source_latent *
+                # visibility_latent; we can pin those strips directly from acc_v,
+                # skipping the pixel decode/re-encode round-trip entirely. The spatial
+                # fade mask doubles as the inpaint mask (1 = keep neighbour, 0 =
+                # regenerate) and is chained under the fun control so both guides stack.
+                vis = (1.0 - (m > 0.5).to(torch.float32))[None, None, None]  # [1,1,1,tr_s,tc_s]
+                vis = vis.expand(1, 1, t, tr_s, tc_s).to(device=acc_v.device)
+                masked = torch.zeros((1, 24, t, tr_s, tc_s), device=vis.device, dtype=vis.dtype)
+                masked[:, :, :, :tr, :tc] = acc_v[:, :, :, r0:r0 + tr, c0:c0 + tc] * vis[:, :, :, :tr, :tc]
+                base = torch.zeros(1, 24, t, tr_s, tc_s, device=vis.device, dtype=vis.dtype)
+                inp_net = inpaint["control_net"].copy()
+                inp_net.cond_hint = torch.cat([base, vis, masked], dim=1)  # [1,49,t,tr_s,tc_s]
+                inp_net.strength = inpaint["strength"]
+                if c_net is not None:
+                    inp_net.set_previous_controlnet(c_net)
+                c_net = inp_net
+            if c_net is not None:
+                cond_tile = apply_control(cond_tile, c_net)
             out = sample_piece(piece, cond_tile, model, noise, sampler, sigmas, negative, cfg)
-            tile_v = out.tensors[0]
+            tile_v = out.tensors[0][:, :, :, :tr, :tc]  # drop the frozen even-pad strip
 
             region = acc_v[:, :, :, r0:r0 + tr, c0:c0 + tc].clone()
             if j > 0 and ovw > 0:
@@ -1308,6 +1431,128 @@ class MMH3SpatialSplitParams(io.ComfyNode):
         return io.NodeOutput(param, tile_width, tile_height)
 
 
+class MMH3FunControlnetParams(io.ComfyNode):
+    """Bundle a MiniMax H3 Fun ControlNet plus its control video and strength.
+
+    The `control_video` is the low-resolution video after the ControlNet-Union
+    preprocessor, upscaled to the target upscale dimensions (full frame). The
+    'MMH3 Ultimate Upscale' node auto-crops it to each chunk's time range and
+    each tile's spatial window, so it guides every piece toward the same content
+    and keeps high-denoise tiling from drifting away from the source."""
+
+    @classmethod
+    def define_schema(cls):
+        return io.Schema(
+            node_id="MMH3FunControlnetParams",
+            display_name="MMH3 Fun Controlnet Params",
+            category="model/latent/minimax",
+            description=(
+                "Bundle Fun ControlNet settings for the 'MMH3 Ultimate Upscale' "
+                "node. Provide the ControlNet-Union checkpoint, a VAE (required "
+                "to encode the control video into the model's latent space), the "
+                "control video at its ORIGINAL low resolution, and the target "
+                "upscale size. The main node crops and upscales the control video "
+                "per chunk/tile automatically, so each tile is guided toward its "
+                "own region of the source video. 'control_upscale_mode' controls "
+                "how the low-res control frames are upscaled in batches to trade "
+                "peak memory against up-front work."
+            ),
+            search_aliases=["h3 fun controlnet", "fun controlnet param", "h3 controlnet"],
+            inputs=[
+                io.ControlNet.Input("control_net", tooltip="The MiniMax H3 Fun ControlNet (load with 'ControlNet Loader'/'DiffControlNet Loader')."),
+                io.Vae.Input("vae", tooltip="VAE used to encode the control video into latent space. Required by the MiniMax H3 Fun ControlNet."),
+                io.Image.Input("control_video", tooltip="ControlNet-Union control video at its ORIGINAL LOW resolution (the preprocessed low-res video, before upscaling), as a sequence of frames [frames, H, W, C]."),
+                io.Int.Input("upscale_width", default=1280, min=32, max=100000, step=32,
+                             tooltip="Target upscaled pixel width of the control video. Must match the upscaled generation size (and the width used by the upscale params)."),
+                io.Int.Input("upscale_height", default=704, min=32, max=100000, step=32,
+                             tooltip="Target upscaled pixel height of the control video. Must match the upscaled generation size (and the height used by the upscale params)."),
+                io.Combo.Input("control_upscale_mode", options=["per_chunk", "per_tile", "all"], default="per_chunk",
+                               tooltip="How the low-res control frames are upscaled in batches. 'per_chunk' (default): upscale only the current temporal chunk's control frames before processing that chunk. 'per_tile': upscale only the current tile's control crop before sampling that tile - lowest peak memory. 'all': upscale the whole control video up front, then crop during tiling - highest peak memory (the original behaviour)."),
+                io.Float.Input("strength", default=1.0, min=0.0, max=10.0, step=0.01,
+                               tooltip="How strongly the control video guides each piece's generation."),
+                io.Float.Input("start_percent", default=0.0, min=0.0, max=1.0, step=0.001, advanced=True,
+                               tooltip="Denoising step fraction at which the control starts taking effect."),
+                io.Float.Input("end_percent", default=1.0, min=0.0, max=1.0, step=0.001, advanced=True,
+                               tooltip="Denoising step fraction at which the control stops taking effect."),
+            ],
+            outputs=[
+                H3_FUN_CONTROL_PARAM.Output("fun_control_param",
+                                            tooltip="Fun ControlNet settings consumed by 'MMH3 Ultimate Upscale'."),
+            ],
+        )
+
+    @classmethod
+    def execute(cls, control_net, vae, control_video, upscale_width, upscale_height,
+                control_upscale_mode, strength, start_percent, end_percent) -> io.NodeOutput:
+        if not isinstance(control_net, comfy.controlnet.MiniMaxH3ControlNet):
+            raise ValueError("MMH3FunControlnetParams needs a MiniMax H3 Fun ControlNet")
+        upscale_width = int(round(upscale_width / 32.0)) * 32
+        upscale_height = int(round(upscale_height / 32.0)) * 32
+        param = {
+            "control_net": control_net,
+            "vae": vae,
+            "control_video": control_video.movedim(-1, 1).contiguous(),  # [T, C, H, W] at low res
+            "upscale_width": upscale_width,
+            "upscale_height": upscale_height,
+            "control_upscale_mode": control_upscale_mode,
+            "strength": strength,
+            "start_percent": start_percent,
+            "end_percent": end_percent,
+        }
+        return io.NodeOutput(param)
+
+
+class MMH3SpatialInpaintParams(io.ComfyNode):
+    """Bundle a MiniMax H3 Fun ControlNet configured for spatial-seam inpaint.
+
+    When consumed by 'MMH3 Ultimate Upscale' together with a spatial split, the
+    overlap strips of every non-first tile are pinned to the already-sampled
+    neighbour content in latent space: the accumulated latent's kept strips feed
+    the controlnet's masked_latent channel and the spatial fade mask doubles as
+    the visibility channel (1 = keep the neighbour, 0 = regenerate). This removes
+    the visible stitch seams left by high-denoise tiling without a pixel
+    decode/re-encode round-trip. The inpaint controlnet is chained under the Fun
+    ControlNet so the two guides stack."""
+
+    @classmethod
+    def define_schema(cls):
+        return io.Schema(
+            node_id="MMH3SpatialInpaintParams",
+            display_name="MMH3 Spatial Inpaint Params",
+            category="model/latent/minimax",
+            description=(
+                "Bundle Fun ControlNet inpaint settings for the 'MMH3 Ultimate "
+                "Upscale' node's spatial split. On every non-first tile the "
+                "overlap strips are pinned to the already-sampled neighbour "
+                "content directly in latent space: the accumulated latent's "
+                "kept strips feed the controlnet's masked_latent channel and the "
+                "spatial fade mask doubles as the visibility channel, so no pixel "
+                "decode/re-encode round-trip is needed. Eliminates the visible "
+                "seam between tiles. Requires the spatial split to be active; "
+                "stackable with the Fun ControlNet params."
+            ),
+            search_aliases=["h3 spatial inpaint", "inpaint param", "h3 seam inpaint"],
+            inputs=[
+                io.ControlNet.Input("control_net", tooltip="The MiniMax H3 Fun ControlNet used to apply the inpaint guidance."),
+                io.Float.Input("inpaint_strength", default=1.0, min=0.0, max=10.0, step=0.01,
+                               tooltip="How strongly the inpaint strips pin the tile to the neighbour content."),
+            ],
+            outputs=[
+                H3_INPAINT_PARAM.Output("inpaint_param",
+                                        tooltip="Spatial seam inpaint settings consumed by 'MMH3 Ultimate Upscale'."),
+            ],
+        )
+
+    @classmethod
+    def execute(cls, control_net, inpaint_strength) -> io.NodeOutput:
+        if not isinstance(control_net, comfy.controlnet.MiniMaxH3ControlNet):
+            raise ValueError("MMH3SpatialInpaintParams needs a MiniMax H3 Fun ControlNet")
+        return io.NodeOutput({
+            "control_net": control_net,
+            "strength": inpaint_strength,
+        })
+
+
 # ---------------------------------------------------------------------------
 # main node
 # ---------------------------------------------------------------------------
@@ -1351,6 +1596,10 @@ class MMH3UltimateUpscale(io.ComfyNode):
                                         tooltip="Output of 'MMH3 Temporal Split Params'. Leave unconnected to process the latent as a single chunk."),
                 H3_SPATIAL_PARAM.Input("spatial_split_param", optional=True,
                                        tooltip="Output of 'MMH3 Spatial Split Params'. Leave unconnected to sample each chunk whole (no tiling)."),
+                H3_FUN_CONTROL_PARAM.Input("fun_control_param", optional=True,
+                                           tooltip="Output of 'MMH3 Fun Controlnet Params'. When connected, every chunk/tile is sampled with a Fun ControlNet that guides the re-generation toward the provided control video (auto-cropped to each chunk's time range and tile's spatial window, and upscaled from low-res per the selected mode). Leave unconnected to disable."),
+                H3_INPAINT_PARAM.Input("inpaint_param", optional=True,
+                                       tooltip="Output of 'MMH3 Spatial Inpaint Params'. When connected with a spatial split, every non-first tile's overlap strips are pinned to the already-sampled neighbour content (VAE-decoded source + spatial fade mask), removing visible tile seams. Leave unconnected to disable."),
             ],
             outputs=[
                 io.Latent.Output("latent", tooltip="Upscaled, re-sampled, stitched MiniMax H3 AV latent."),
@@ -1365,7 +1614,8 @@ class MMH3UltimateUpscale(io.ComfyNode):
     def execute(cls, latent, conditioning, model, noise, sampler, sigmas,
                 negative=None, cfg=1.0,
                 temporal_split_param=None, spatial_split_param=None,
-                latent_upscale_param=None) -> io.NodeOutput:
+                latent_upscale_param=None, fun_control_param=None,
+                inpaint_param=None) -> io.NodeOutput:
         samples = latent["samples"]
         if not is_h3_av_latent(samples):
             raise ValueError("MMH3UltimateUpscale expects a MiniMax H3 AV latent (nested video [B,24,T,H,W] + audio [B,32,2,T])")
@@ -1413,6 +1663,15 @@ class MMH3UltimateUpscale(io.ComfyNode):
         segments_debug = []
         tiles_debug = []
 
+        # 'all' upscale mode: materialize the whole upscaled control video once so
+        # every chunk crops from it; the other modes keep the low-res control and
+        # upscale only per chunk / per tile to limit peak memory.
+        fc_buffer = None
+        if fun_control_param is not None and fun_control_param["control_upscale_mode"] == "all":
+            fc_buffer = _resize_images(fun_control_param["control_video"],
+                                       fun_control_param["upscale_height"],
+                                       fun_control_param["upscale_width"])
+
         for i, (k0, f0, k1, f1) in enumerate(bounds):
             chunk_v = video[:, :, k0:k1].contiguous()
             a0, a1 = audio_range(f0, f1)
@@ -1445,15 +1704,35 @@ class MMH3UltimateUpscale(io.ComfyNode):
                 cond_i = anchor_conditioning(cond_i, acc_v, f0, anchor_strength)
 
             # 4. inner loop: spatial split -> sample -> stitch
+            fun_control = None
+            if fun_control_param is not None:
+                chunk_ctrl, fc_mode = _chunk_fun_control(fun_control_param, f0, f1, fc_buffer)
+                fun_control = dict(fun_control_param)
+                fun_control["chunk_ctrl"] = chunk_ctrl
+                fun_control["mode"] = fc_mode
             if spatial_split_param is not None:
                 chunk_out_v, tile_info = spatial_process(
                     chunk_v, chunk_a, cond_i, spatial_split_param,
                     model, noise, sampler, sigmas, negative, cfg,
+                    fun_control=fun_control, inpaint=inpaint_param,
                 )
                 tile_info = dict(tile_info)
                 tile_info["chunk"] = i
                 tiles_debug.append(tile_info)
             else:
+                if fun_control is not None:
+                    # whole-chunk path: the control video covers the full frame, so
+                    # just upscale the low-res chunk to the target size (per_tile) or
+                    # use the already-upscaled chunk, then drive a fresh controlnet copy
+                    if fun_control["mode"] == "per_tile":
+                        chunk_hint = _resize_images(fun_control["chunk_ctrl"],
+                                                    fun_control["upscale_height"],
+                                                    fun_control["upscale_width"])
+                    else:
+                        chunk_hint = fun_control["chunk_ctrl"]
+                    cond_i = inject_fun_control(
+                        cond_i, fun_control["control_net"], fun_control["vae"], chunk_hint,
+                        fun_control["strength"], fun_control["start_percent"], fun_control["end_percent"])
                 piece = {"samples": comfy.nested_tensor.NestedTensor((chunk_v, chunk_a))}
                 out = sample_piece(piece, cond_i, model, noise, sampler, sigmas, negative, cfg)
                 chunk_out_v = out.tensors[0]
