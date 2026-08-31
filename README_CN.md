@@ -10,7 +10,8 @@ MiniMax H3 生成的视频是一个"嵌套潜变量"——把 24 通道的视频
 
 ## 更新信息
 
-- **20260829 - 增加Fun ControlNet相关节点以提升插件性能表现。** 新加入两个节点 "MMH3 Fun Controlnet Inpaint" 和 "MMH3 Spatial Inpaint Params", 前者有助于消除画面分块的缝隙，后者有助于在较高降噪幅度下保持画面原有内容。要使用这些节点你需要把 [kijai的提交申请](https://github.com/Comfy-Org/ComfyUI/pull/15860) 合并进你的comfyui.
+- **20260831 - 整理代码结构，修复bugs，添加一些新功能。** 添加`dynamic fade`改善多步数下接缝过渡，添加`brightness match`改善亮度闪烁问题。
+- **20260829 - 增加Fun ControlNet相关节点以提升插件性能表现。** 新加入两个节点 `MMH3 Fun Controlnet Inpaint` 和 `MMH3 Spatial Inpaint Params`, 前者有助于消除画面分块的缝隙，后者有助于在较高降噪幅度下保持画面原有内容。要使用这些节点你需要把 [kijai的提交申请](https://github.com/Comfy-Org/ComfyUI/pull/15860) 合并进你的comfyui。
 - **20260825 - 新增实验性质的 `LTX25 Ultimate Upscale` 节点。** 在原有 MMH3 流程基础上，扩展支持 LTX2.5 的嵌套 AV latent（视频 `[B,128,T,H,W]` + 音频 `[B,C,time,freq]`）：单节点完成 时间分块 → latent 放大（固定 2x 模型放大后再插值到目标宽高） → 空间分块 → 逐 tile 采样 → 拼接。提供 `LTX25 Latent Upscale Params` / `LTX25 Temporal Split Params` / `LTX25 Spatial Split Params` 三个可选参数节点。音频目前有问题，你应该用原始音频latent。这些节点目前是高度实验性质的，不要依赖它们。
 
 ---
