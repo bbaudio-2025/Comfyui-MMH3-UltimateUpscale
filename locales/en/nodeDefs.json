@@ -89,6 +89,18 @@
       },
       "overlap_blend": {
         "tooltip": "How the overlap band transitions when stitching: linear cross-fade (default), smoothstep (eased), overwrite (whole band from the overlap_mode side), midpoint (hard switch at the band's middle)."
+      },
+      "masked_area_noise": {
+        "tooltip": "How much noise is allowed into the masked (frozen/fade) overlap band during sampling. 0 (default): current behaviour, the masked area gets no noise injection and stays fixed. 1.0: the mask has no effect and every tile is sampled freely. Small values like 0.01 let a little noise through to probe how much the scene moves under the mask."
+      },
+      "brightness_match": {
+        "tooltip": "Per-frame, per-channel median brightness match: after sampling, shift each tile's brightness baseline to the source region at the same (tile, frame). Reduces tile-to-tile and frame-to-frame luminance drift. Experimental - may be removed."
+      },
+      "dynamic_fade": {
+        "tooltip": "Temporal fade schedule over each tile's sampling. 'off' (default): the FADE segment keeps its fixed width for the whole tile (current behaviour). 'narrowing': the fade width starts at fade_width/fade_height and shrinks linearly to dynamic_fade_min by the end of the tile. 'widening': it starts at dynamic_fade_min and grows linearly to fade_width/fade_height. Only takes effect when the tile is sampled in more than one step; if a per-axis fade is not larger than dynamic_fade_min it behaves like 'off'."
+      },
+      "dynamic_fade_min": {
+        "tooltip": "Minimum width (PIXELS) the FADE segment can reach when dynamic_fade is 'narrowing' or 'widening'. Only effective when a per-axis fade is larger than this; otherwise the fade stays at its static width. Default 32."
       }
     },
     "outputs": {
