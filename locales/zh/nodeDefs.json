@@ -107,6 +107,22 @@
       "overlap_blend": {
         "name": "重叠混合",
         "tooltip": "拼接时重叠带的过渡方式：linear 交叉淡入淡出（默认）、smoothstep（缓动）、overwrite（整个带取自 overlap_mode 一侧）、midpoint（在带的中间硬切换）。"
+      },
+      "masked_area_noise": {
+        "name": "遮罩区噪声",
+        "tooltip": "采样时允许进入遮罩（冻结/渐变）重叠带的噪声量。0（默认）：当前行为，遮罩区不注入噪声并保持固定。1.0：遮罩无效果，每个瓦片完全自由采样。0.01 等小值允许少量噪声通过，用于探测场景在遮罩下的移动程度。"
+      },
+      "brightness_match": {
+        "name": "亮度匹配",
+        "tooltip": "逐帧、逐通道中位数亮度匹配：采样后，将每个瓦片的亮度基线对齐到源区域在相同（瓦片、帧）位置的亮度。减少瓦片间与帧间的亮度漂移。实验性功能——可能被移除。"
+      },
+      "dynamic_fade": {
+        "name": "动态渐变",
+        "tooltip": "每个瓦片采样过程中的时间渐变调度。'off'（默认）：FADE 段在整个瓦片采样期间保持固定宽度（当前行为）。'narrowing'：FADE 宽度从 fade_width/fade_height 开始，到瓦片结束时线性缩小到 dynamic_fade_min。'widening'：从 dynamic_fade_min 开始，线性增长到 fade_width/fade_height。仅当瓦片以多个步骤采样时才生效；若某个轴的渐变不大于 dynamic_fade_min，则行为与 'off' 相同。"
+      },
+      "dynamic_fade_min": {
+        "name": "动态渐变最小值",
+        "tooltip": "当 dynamic_fade 为 'narrowing' 或 'widening' 时，FADE 段能达到的最小宽度（像素）。仅当某个轴的渐变大于此值时有效；否则渐变保持静态宽度。默认 32。"
       }
     },
     "outputs": {
