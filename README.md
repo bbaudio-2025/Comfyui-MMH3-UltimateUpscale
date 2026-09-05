@@ -10,6 +10,7 @@ MiniMax H3 generates video as a nested latent that bundles 24-channel video **an
 
 ## Changelog
 
+- **20260905 - Latent upscale checkpoints are now `.safetensors` only.** Pickle formats (`.pth` / `.pt` / `.ckpt`) are no longer listed or loaded, because `torch.load()` on a pickle checkpoint can execute arbitrary code and `weights_only=True` is not a reliable mitigation on torch < 2.6 ([CVE-2025-32434](https://nvd.nist.gov/vuln/detail/CVE-2025-32434)). If you were using `minimax_h3_latent_upscaler_3d_fp32.pth`, convert it once (see [Upscale model format](#upscale-model-format-safetensors-only)) or switch to the fp16 / bf16 `.safetensors` build. The scanner now also searches every registered `latent_upscale_models` directory (including `extra_model_paths.yaml`) instead of only the first one.
 - **20260831 - Rearrange the code structure. Bugs fix and add some features.** Add `dynamic fade` to improve seam removal when denoise step>1. Add `brightness match` to to help reduce brightness flickering.
 - **20260829 - Add new nodes about Fun ControlNet to enhance performance.** Two nodes `MMH3 Fun Controlnet Inpaint` and `MMH3 Spatial Inpaint Params`, which help seamless spatial stitching and better consistance in higher denoise condition. To use these nodes you have to merge [kijai's pull request](https://github.com/Comfy-Org/ComfyUI/pull/15860) in comfyui.
 - **20260825 - New experimental `LTX25 Ultimate Upscale` node.** Built on top of the MMH3 pipeline, it now also supports LTX2.5 nested AV latents (video `[B,128,T,H,W]` + audio `[B,C,time,freq]`) in a single node: temporal split -> latent upscale (fixed 2x model upscale, then interpolated to the target width/height) -> spatial split -> per-tile sampling -> stitch. Three optional param nodes are provided: `LTX25 Latent Upscale Params`, `LTX25 Temporal Split Params`, and `LTX25 Spatial Split Params`. Audio is buggy so you should use original audio latent. These nodes are highly experimental, so don't rely on them.
@@ -118,6 +119,23 @@ Notes:
 6. Decode the output latent with the H3 VAE.
 
 > The width/height you set for upscaling must match the **conditioning's generation size** (the size the video was conditioned at, after upscale).
+
+### Upscale model format: `.safetensors` only
+
+`MMH3 Latent Upscale with Model Params` only lists and loads **`.safetensors`** checkpoints (`.sft` is accepted as well, matching ComfyUI core). Pickle formats (`.pth` / `.pt` / `.ckpt`) are skipped while scanning and are rejected *before* the file is opened.
+
+**Why:** `torch.load()` on a pickle checkpoint can execute arbitrary code the moment the model is selected. `weights_only=True` reduces the risk but is **not** a reliable mitigation on torch < 2.6 (pickle-time bypass, [CVE-2025-32434](https://nvd.nist.gov/vuln/detail/CVE-2025-32434)). Refusing pickle entirely removes that surface.
+
+**If you have a `.pth` checkpoint you trust** (for example `minimax_h3_latent_upscaler_3d_fp32.pth`), convert it once:
+
+```python
+import torch, safetensors.torch
+sd = torch.load('model.pth', map_location='cpu', weights_only=True)
+sd = sd['model'] if isinstance(sd, dict) and 'model' in sd else sd
+safetensors.torch.save_file(sd, 'model.safetensors')
+```
+
+If `weights_only=True` fails, the file is not a plain state dict and should not be trusted — don't work around it by switching back to `weights_only=False`. Checkpoints left in the folder are reported as ignored in the console at startup.
 
 ---
 
