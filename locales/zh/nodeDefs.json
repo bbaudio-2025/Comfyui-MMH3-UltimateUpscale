@@ -1,11 +1,11 @@
 {
   "MMH3LatentUpscaleWithModelParams": {
     "display_name": "MMH3 潜空间放大（模型参数）",
-    "description": "为 'MMH3 Ultimate Upscale' 节点打包 H3 3D 潜空间放大设置。使用 latent_upscale_models 文件夹中的 minimax_h3_latent_upscaler_3d 检查点（非标准 LatentUpscale 加载器——H3 权重与其支持的架构不匹配）。",
+    "description": "为 'MMH3 Ultimate Upscale' 节点打包 H3 3D 潜空间放大设置。使用 latent_upscale_models 文件夹中的 minimax_h3_latent_upscaler_3d 检查点（非标准 LatentUpscale 加载器——H3 权重与其支持的架构不匹配）。仅接受 .safetensors 检查点；.pth 等 pickle 格式加载时可执行任意代码，因此被拒绝。",
     "inputs": {
       "model_name": {
         "name": "模型名称",
-        "tooltip": "latent_upscale_models 文件夹中的 H3 潜空间放大模型文件（如 minimax_h3_latent_upscaler_3d_*.safetensors）。加载非 H3 放大模型可能报错。"
+        "tooltip": "latent_upscale_models 文件夹中的 H3 潜空间放大模型文件（如 minimax_h3_latent_upscaler_3d_*.safetensors）。仅接受 .safetensors——出于安全考虑，.pth/.pt/.ckpt 等 pickle 检查点一律拒绝。加载非 H3 放大模型可能报错。"
       },
       "width": {
         "name": "宽度",
