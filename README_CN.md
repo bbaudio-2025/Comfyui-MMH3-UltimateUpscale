@@ -10,6 +10,7 @@ MiniMax H3 生成的视频是一个"嵌套潜变量"——把 24 通道的视频
 
 ## 更新信息
 
+- **20260905 - latent 放大模型现在只支持 `.safetensors`。** 不再列出、也不再加载 `.pth` / `.pt` / `.ckpt` 等 pickle 格式：`torch.load()` 加载 pickle 权重时可以执行任意代码，而在 torch < 2.6 上 `weights_only=True` 也并非可靠防护（[CVE-2025-32434](https://nvd.nist.gov/vuln/detail/CVE-2025-32434)）。如果你之前在用 `minimax_h3_latent_upscaler_3d_fp32.pth`，请按下方[放大模型格式](#放大模型格式仅支持-safetensors)转换一次，或改用 fp16 / bf16 的 `.safetensors` 版本。扫描逻辑同时改为遍历所有已注册的 `latent_upscale_models` 目录（含 `extra_model_paths.yaml`），而不再只看第一个。
 - **20260831 - 整理代码结构，修复bugs，添加一些新功能。** 添加`dynamic fade`改善多步数下接缝过渡，添加`brightness match`改善亮度闪烁问题。
 - **20260829 - 增加Fun ControlNet相关节点以提升插件性能表现。** 新加入两个节点 `MMH3 Fun Controlnet Inpaint` 和 `MMH3 Spatial Inpaint Params`, 前者有助于消除画面分块的缝隙，后者有助于在较高降噪幅度下保持画面原有内容。要使用这些节点你需要把 [kijai的提交申请](https://github.com/Comfy-Org/ComfyUI/pull/15860) 合并进你的comfyui。
 - **20260825 - 新增实验性质的 `LTX25 Ultimate Upscale` 节点。** 在原有 MMH3 流程基础上，扩展支持 LTX2.5 的嵌套 AV latent（视频 `[B,128,T,H,W]` + 音频 `[B,C,time,freq]`）：单节点完成 时间分块 → latent 放大（固定 2x 模型放大后再插值到目标宽高） → 空间分块 → 逐 tile 采样 → 拼接。提供 `LTX25 Latent Upscale Params` / `LTX25 Temporal Split Params` / `LTX25 Spatial Split Params` 三个可选参数节点。音频目前有问题，你应该用原始音频latent。这些节点目前是高度实验性质的，不要依赖它们。
@@ -118,6 +119,23 @@ T(分块)     ≈ 分片数 × 单片FLOPs / GPU算力           ← 受算力�
 6. 用 H3 VAE 解码输出 latent。
 
 > 你设置的放大 width/height 必须与 **conditioning 的生成尺寸**一致（即视频被放大后、conditioning 所基于的尺寸）。
+
+### 放大模型格式：仅支持 `.safetensors`
+
+`MMH3 Latent Upscale with Model Params` 只列出并加载 **`.safetensors`** 检查点（同时接受 `.sft`，与 ComfyUI 核心一致）。`.pth` / `.pt` / `.ckpt` 等 pickle 格式在扫描阶段被跳过，并在文件被读取之前直接拒绝。
+
+**原因：** 用 `torch.load()` 加载 pickle 权重时，选中的那一刻就可能执行任意代码。`weights_only=True` 只能降低风险，在 torch < 2.6 上并不可靠（存在 pickle 阶段绕过，[CVE-2025-32434](https://nvd.nist.gov/vuln/detail/CVE-2025-32434)）。彻底拒绝 pickle 才能消除这个攻击面。
+
+**如果你手上有信任的 `.pth` 权重**（例如 `minimax_h3_latent_upscaler_3d_fp32.pth`），转换一次即可：
+
+```python
+import torch, safetensors.torch
+sd = torch.load('model.pth', map_location='cpu', weights_only=True)
+sd = sd['model'] if isinstance(sd, dict) and 'model' in sd else sd
+safetensors.torch.save_file(sd, 'model.safetensors')
+```
+
+如果 `weights_only=True` 报错，说明这个文件不是纯 state dict，不应被信任——不要靠改回 `weights_only=False` 来绕过。仍留在目录里被忽略的文件，会在启动时打印到控制台。
 
 ---
 
