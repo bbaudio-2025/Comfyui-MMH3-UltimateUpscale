@@ -995,12 +995,14 @@ class MMH3LatentUpscaleWithModelParams(io.ComfyNode):
                 "Bundle the H3 3D latent upscale settings for the 'MMH3 Ultimate "
                 "Upscale' node. Uses the minimax_h3_latent_upscaler_3d checkpoints "
                 "from the latent_upscale_models folder (not the standard LatentUpscale "
-                "loader - the H3 weights do not match its supported architectures)."
+                "loader - the H3 weights do not match its supported architectures). "
+                "Only .safetensors checkpoints are accepted; pickle formats such as "
+                ".pth are refused because they can execute arbitrary code when loaded."
             ),
             search_aliases=["h3 upscale params", "upscale param", "h3 upscale"],
             inputs=[
                 io.Combo.Input("model_name", options=_scan_models(),
-                               tooltip="The H3 latent upscale model file in the latent_upscale_models folder (e.g. minimax_h3_latent_upscaler_3d_*.safetensors). Loading a non-H3 upscale model may error."),
+                               tooltip="The H3 latent upscale model file in the latent_upscale_models folder (e.g. minimax_h3_latent_upscaler_3d_*.safetensors). Only .safetensors is accepted - .pth/.pt/.ckpt pickle checkpoints are refused for security reasons. Loading a non-H3 upscale model may error."),
                 io.Int.Input("width", default=1280, min=64, max=4096, step=32,
                              tooltip="Target overall pixel width of the upscaled frame (snapped to a multiple of 32, the H3 upscaler's required grid). Must match the conditioning's generation size."),
                 io.Int.Input("height", default=704, min=64, max=4096, step=32,
