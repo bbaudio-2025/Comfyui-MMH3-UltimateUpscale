@@ -5,9 +5,14 @@ from the Comfyui_Minimax_h3_latent_Upscaler plugin (https://github.com/LBH-123-A
 so it works directly with the minimax_h3_latent_upscaler_3d checkpoints. Kept in
 its own module so that if the upstream project updates the algorithm, this file
 can be updated in isolation without touching the plugin's business logic.
+
+DELIBERATE DIVERGENCE FROM UPSTREAM - do not "sync" this away: the checkpoint
+loader here accepts .safetensors only. Upstream also accepts pickle checkpoints
+(.pth) through torch.load(..., weights_only=False), which is an arbitrary code
+execution risk; weights_only=True is not a reliable mitigation on torch < 2.6
+(CVE-2025-32434). See _SUPPORTED_MODEL_EXTENSIONS below.
 """
 
-import glob
 import os
 import re
 
@@ -209,28 +214,79 @@ class _LatentResizer3D(nn.Module):
 
 _MODEL_CACHE = {}
 
+# Only safetensors checkpoints are accepted, and they are rejected *before* the
+# file is read: torch.load() on a pickle checkpoint can execute arbitrary code,
+# and weights_only=True is not a sufficient defence on torch < 2.6
+# (CVE-2025-32434). ".sft" is the other extension ComfyUI core accepts for
+# safetensors (comfy.utils.load_torch_file), so it is allowed here as well.
+_SUPPORTED_MODEL_EXTENSIONS = (".safetensors", ".sft")
+
+# Formats that used to be accepted and are now refused on purpose. Only used to
+# print an actionable hint instead of a silent "no models found".
+_REJECTED_MODEL_EXTENSIONS = (".pth", ".pt", ".pt2", ".ckpt", ".bin", ".pkl")
+
+_CONVERT_HINT = (
+    "Convert it once with:\n"
+    "    import torch, safetensors.torch\n"
+    "    sd = torch.load('model.pth', map_location='cpu', weights_only=True)\n"
+    "    sd = sd['model'] if isinstance(sd, dict) and 'model' in sd else sd\n"
+    "    safetensors.torch.save_file(sd, 'model.safetensors')\n"
+    "If weights_only=True fails, the checkpoint is not a plain state dict and "
+    "should not be trusted."
+)
+
+
+def _model_ext(name):
+    """Lower-cased extension, so the scanner and the loader agree on case."""
+    return os.path.splitext(name)[1].lower()
+
+
+def _model_dirs():
+    return folder_paths.get_folder_paths(_LATENT_UPSCALE_FOLDER)
+
 
 def _get_models_dir():
-    return folder_paths.get_folder_paths(_LATENT_UPSCALE_FOLDER)[0]
+    """First registered models dir. Used for messages only - loading resolves a
+    name across every registered dir (see load_upscale_model)."""
+    return _model_dirs()[0]
 
 
 def _scan_models():
-    model_dir = _get_models_dir()
-    files = glob.glob(os.path.join(model_dir, "*.safetensors"))
-    names = sorted(os.path.basename(f) for f in files)
+    """List usable checkpoints across ALL registered latent_upscale_models dirs.
+
+    Uses folder_paths.get_filename_list (same as the upstream node) rather than a
+    glob on a single directory, so models registered via extra_model_paths.yaml
+    and sub-folders show up too, and the extension filter is case-insensitive.
+    """
+    all_names = folder_paths.get_filename_list(_LATENT_UPSCALE_FOLDER)
+    names = sorted(n for n in all_names
+                   if _model_ext(n) in _SUPPORTED_MODEL_EXTENSIONS)
+    rejected = sorted(n for n in all_names
+                      if _model_ext(n) in _REJECTED_MODEL_EXTENSIONS)
+    if rejected:
+        print(f"[MMH3-UltimateUpscale] Ignored {len(rejected)} pickle checkpoint(s) "
+              f"in the latent_upscale_models folder (only .safetensors is supported): "
+              f"{', '.join(rejected)}")
     if not names:
-        return [f"(no upscale models found in: {model_dir})"]
+        return [f"(no .safetensors upscale models found in: {', '.join(_model_dirs())})"]
     return names
 
 
 def _load_raw_sd(path):
-    if not path.lower().endswith('.safetensors'):
+    """Read a checkpoint into a raw state dict. Only safetensors is accepted;
+    pickle formats are refused before the file is opened."""
+    if _model_ext(path) not in _SUPPORTED_MODEL_EXTENSIONS:
         raise ValueError(
-            "Unsupported upscale model format. Only .safetensors files are allowed."
+            f"Refusing to load '{os.path.basename(path)}': this node only accepts "
+            f"{' / '.join(_SUPPORTED_MODEL_EXTENSIONS)} checkpoints. Pickle formats "
+            f"(.pth / .pt / .ckpt) can execute arbitrary code when loaded, so they "
+            f"are rejected before the file is read. {_CONVERT_HINT}"
         )
     from safetensors.torch import load_file
     sd = load_file(path, device='cpu')
-    if isinstance(sd, dict) and 'model' in sd:
+    if isinstance(sd, dict) and isinstance(sd.get('model'), dict):
+        # Pickle checkpoints sometimes wrap the weights in {"model": ...}. Guard
+        # on the value type so a tensor literally named "model" can't break this.
         sd = sd['model']
     sd = {k: v.to(torch.float16) if v.dtype == torch.float8_e4m3fn else v
           for k, v in sd.items()}
@@ -292,9 +348,12 @@ def load_upscale_model(name, device, precision):
     if cache_key in _MODEL_CACHE:
         return _MODEL_CACHE[cache_key].to(device)
 
-    path = os.path.join(_get_models_dir(), name)
-    if not os.path.exists(path):
-        raise FileNotFoundError(f"Model file not found: {path}")
+    # Resolve the name against every registered latent_upscale_models dir, not
+    # just the first one, so extra_model_paths.yaml entries are usable.
+    path = folder_paths.get_full_path(_LATENT_UPSCALE_FOLDER, name)
+    if path is None or not os.path.isfile(path):
+        raise FileNotFoundError(
+            f"Model file not found: {name} (searched: {', '.join(_model_dirs())})")
 
     raw_sd = _load_raw_sd(path)
     up_sd = _extract_upscaler_sd(raw_sd)
@@ -375,7 +434,12 @@ def upscale_video(video, param):
         return video, h_in, w_in
 
     if str(model_name).startswith('('):
-        raise ValueError("Please place H3 upscale model files into the latent_upscale_models directory")
+        raise ValueError(
+            "No usable H3 upscale model selected. Put a .safetensors checkpoint "
+            "(e.g. minimax_h3_latent_upscaler_3d_fp16.safetensors) into the "
+            "latent_upscale_models folder and restart ComfyUI. Pickle checkpoints "
+            "(.pth / .pt / .ckpt) are no longer accepted for security reasons."
+        )
 
     s = video.to(device=dev, dtype=compute_dtype, copy=True)
     model = load_upscale_model(model_name, dev, precision)
