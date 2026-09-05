@@ -215,10 +215,8 @@ def _get_models_dir():
 
 
 def _scan_models():
-    files = []
     model_dir = _get_models_dir()
-    for ext in ("*.pth", "*.safetensors"):
-        files.extend(glob.glob(os.path.join(model_dir, ext)))
+    files = glob.glob(os.path.join(model_dir, "*.safetensors"))
     names = sorted(os.path.basename(f) for f in files)
     if not names:
         return [f"(no upscale models found in: {model_dir})"]
@@ -226,11 +224,12 @@ def _scan_models():
 
 
 def _load_raw_sd(path):
-    if path.endswith('.safetensors'):
-        from safetensors.torch import load_file
-        sd = load_file(path, device='cpu')
-    else:
-        sd = torch.load(path, map_location='cpu', weights_only=False)
+    if not path.lower().endswith('.safetensors'):
+        raise ValueError(
+            "Unsupported upscale model format. Only .safetensors files are allowed."
+        )
+    from safetensors.torch import load_file
+    sd = load_file(path, device='cpu')
     if isinstance(sd, dict) and 'model' in sd:
         sd = sd['model']
     sd = {k: v.to(torch.float16) if v.dtype == torch.float8_e4m3fn else v
