@@ -44,7 +44,7 @@ import comfy.utils
 import latent_preview
 from comfy_api.latest import io
 
-from .h3_latent_upscaler import _compute_upscale_target, _scan_models, upscale_video
+from .h3_latent_upscaler import _compute_upscale_target, _scan_models, upscale_video, unload_upscale_model
 
 try:
     from comfy.ldm.minimax.model import FRAME_PER_TOKEN, FRAME_RESCALE
@@ -1009,6 +1009,8 @@ class MMH3LatentUpscaleWithModelParams(io.ComfyNode):
                              tooltip="Target overall pixel height of the upscaled frame (snapped to a multiple of 32, the H3 upscaler's required grid). Must match the conditioning's generation size."),
                 io.Combo.Input("device", options=["cuda", "cpu"], default="cuda"),
                 io.Combo.Input("precision", options=["fp16", "fp32", "bf16"], default="fp16"),
+                io.Boolean.Input("offload_model", default=True,
+                                 tooltip="Whether to offload the H3 upscale model to CPU (freeing GPU VRAM) right after upscaling. Default on keeps the low-VRAM behaviour; turn it off to keep the model resident on the device so the next chunk skips the re-upload and runs faster."),
             ],
             outputs=[
                 H3_UPSCALE_PARAM.Output("latent_upscale_param",
@@ -1017,7 +1019,7 @@ class MMH3LatentUpscaleWithModelParams(io.ComfyNode):
         )
 
     @classmethod
-    def execute(cls, model_name, width, height, device, precision) -> io.NodeOutput:
+    def execute(cls, model_name, width, height, device, precision, offload_model) -> io.NodeOutput:
         width = int(round(width / 32.0)) * 32
         height = int(round(height / 32.0)) * 32
         param = {
@@ -1026,6 +1028,7 @@ class MMH3LatentUpscaleWithModelParams(io.ComfyNode):
             "height": height,
             "device": device,
             "precision": precision,
+            "offload_model": offload_model,
         }
         return io.NodeOutput(param)
 
@@ -1533,6 +1536,15 @@ class MMH3UltimateUpscale(io.ComfyNode):
                                        fun_control_param["upscale_height"],
                                        fun_control_param["upscale_width"])
 
+        # High-VRAM fast path: when offload_model is OFF the H3 upscaler stays
+        # resident on the device for the whole pass (no per-chunk unload/reload),
+        # and the diffusion model is not offloaded during upscale either. The
+        # upscaler is then unloaded once at the end. Only the model-based upscaler
+        # node carries 'offload_model'; model-free interpolation has no model.
+        keep_upscaler_resident = (latent_upscale_param is not None
+                                  and "model_name" in latent_upscale_param
+                                  and not latent_upscale_param.get("offload_model", True))
+
         for i, (k0, f0, k1, f1) in enumerate(bounds):
             chunk_v = video[:, :, k0:k1].contiguous()
             a0, a1 = audio_range(f0, f1)
@@ -1546,7 +1558,8 @@ class MMH3UltimateUpscale(io.ComfyNode):
             upscaled = False
             if latent_upscale_param is not None:
                 use_model = "model_name" in latent_upscale_param
-                if use_model and str(latent_upscale_param["device"]) == "cuda" and hasattr(model, "clone_base_uuid"):
+                if (use_model and not keep_upscaler_resident
+                        and str(latent_upscale_param["device"]) == "cuda" and hasattr(model, "clone_base_uuid")):
                     # the 3D upscaler is on the GPU during upscale; offload the
                     # diffusion model so they don't reside simultaneously
                     comfy.model_management.unload_model_and_clones(model, unload_additional_models=False)
@@ -1618,6 +1631,14 @@ class MMH3UltimateUpscale(io.ComfyNode):
         if hasattr(model, "clone_base_uuid"):
             comfy.model_management.unload_model_and_clones(model, unload_additional_models=False)
             comfy.model_management.soft_empty_cache()
+
+        # If the upscaler was kept resident for the full pass, unload it once now
+        if keep_upscaler_resident and latent_upscale_param is not None:
+            unload_upscale_model(
+                latent_upscale_param["model_name"],
+                latent_upscale_param["device"],
+                latent_upscale_param["precision"],
+            )
 
         out = {"samples": comfy.nested_tensor.NestedTensor((acc_v, acc_a))}
         return io.NodeOutput(out, segments_debug, tiles_debug)
