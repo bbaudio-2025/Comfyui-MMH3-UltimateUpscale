@@ -452,5 +452,6 @@ def upscale_video(video, param):
         out = out.mul(norm_std).add(norm_mean)
 
     out = out.to(device="cpu", dtype=orig_dtype)
-    unload_upscale_model(model_name, dev, precision)
+    if param.get("offload_model", True):
+        unload_upscale_model(model_name, dev, precision)
     return out, h_out, w_out
