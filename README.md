@@ -10,6 +10,7 @@ MiniMax H3 generates video as a nested latent that bundles 24-channel video **an
 
 ## Changelog
 
+- **20260923 - Add new node MMH3 Tiled Diffusion (Experimental).** It can be used to replace spatial split, basically without any seam defects.
 - **20260905 - Latent upscale checkpoints are now `.safetensors` only.** Pickle formats (`.pth` / `.pt` / `.ckpt`) are no longer listed or loaded, because `torch.load()` on a pickle checkpoint can execute arbitrary code and `weights_only=True` is not a reliable mitigation on torch < 2.6 ([CVE-2025-32434](https://nvd.nist.gov/vuln/detail/CVE-2025-32434)). If you were using `minimax_h3_latent_upscaler_3d_fp32.pth`, convert it once (see [Upscale model format](#upscale-model-format-safetensors-only)) or switch to the fp16 / bf16 `.safetensors` build. The scanner now also searches every registered `latent_upscale_models` directory (including `extra_model_paths.yaml`) instead of only the first one.
 - **20260831 - Rearrange the code structure. Bugs fix and add some features.** Add `dynamic fade` to improve seam removal when denoise step>1. Add `brightness match` to to help reduce brightness flickering.
 - **20260829 - Add new nodes about Fun ControlNet to enhance performance.** Two nodes `MMH3 Fun Controlnet Inpaint` and `MMH3 Spatial Inpaint Params`, which help seamless spatial stitching and better consistance in higher denoise condition. To use these nodes you have to merge [kijai's pull request](https://github.com/Comfy-Org/ComfyUI/pull/15860) in comfyui.
@@ -147,10 +148,17 @@ This node is built on top of following existing community projects:
   https://github.com/bbaudio-2025/Comfyui-MiniMax-H3-LatentSplit
 - **Latent model-based upscaling (H3 3D upscaler checkpoints & inference):**  
   https://github.com/LBH-123-AI/Comfyui_Minimax_h3_latent_Upscaler
+- **Tiled diffusion (spatial):**
+  https://github.com/shiimizu/ComfyUI-TiledDiffusion
 
-The H3 3D upscaler network code and normalization statistics are adapted from the second project; the temporal/spatial split, anchor and append logic follow the first.
+The H3 3D upscaler network code and normalization statistics are adapted from the second project; the temporal/spatial split, anchor and append logic follow the first.  
 
 ---
+
+## Licence
+
+The code for tiled diffusion references its original repo and its licence is GPLv3.  
+The rest is MIT.
 
 ## Extra
 
