@@ -10,6 +10,7 @@ MiniMax H3 生成的视频是一个"嵌套潜变量"——把 24 通道的视频
 
 ## 更新信息
 
+- **20260923 - 添加新节点MMH3 Tiled Diffusion (Experimental).** 它可以用来取代空间分割，几乎没有接缝瑕疵。
 - **20260905 - latent 放大模型现在只支持 `.safetensors`。** 不再列出、也不再加载 `.pth` / `.pt` / `.ckpt` 等 pickle 格式：`torch.load()` 加载 pickle 权重时可以执行任意代码，而在 torch < 2.6 上 `weights_only=True` 也并非可靠防护（[CVE-2025-32434](https://nvd.nist.gov/vuln/detail/CVE-2025-32434)）。如果你之前在用 `minimax_h3_latent_upscaler_3d_fp32.pth`，请按下方[放大模型格式](#放大模型格式仅支持-safetensors)转换一次，或改用 fp16 / bf16 的 `.safetensors` 版本。扫描逻辑同时改为遍历所有已注册的 `latent_upscale_models` 目录（含 `extra_model_paths.yaml`），而不再只看第一个。
 - **20260831 - 整理代码结构，修复bugs，添加一些新功能。** 添加`dynamic fade`改善多步数下接缝过渡，添加`brightness match`改善亮度闪烁问题。
 - **20260829 - 增加Fun ControlNet相关节点以提升插件性能表现。** 新加入两个节点 `MMH3 Fun Controlnet Inpaint` 和 `MMH3 Spatial Inpaint Params`, 前者有助于消除画面分块的缝隙，后者有助于在较高降噪幅度下保持画面原有内容。要使用这些节点你需要把 [kijai的提交申请](https://github.com/Comfy-Org/ComfyUI/pull/15860) 合并进你的comfyui。
@@ -147,8 +148,17 @@ safetensors.torch.save_file(sd, 'model.safetensors')
   https://github.com/bbaudio-2025/Comfyui-MiniMax-H3-LatentSplit
 - **Latent 模型放大（H3 3D 放大模型权重与推理）：**  
   https://github.com/LBH-123-AI/Comfyui_Minimax_h3_latent_Upscaler
+- **Tiled diffusion (spatial):**
+  https://github.com/shiimizu/ComfyUI-TiledDiffusion
 
 其中 H3 3D 放大模型的网络代码与归一化统计量改编自第二个项目；时间/空间分块、锚定与拼接逻辑沿用第一个项目。
+
+---
+
+## Licence
+
+tiled diffusion相关代码参考自它的原始仓库，其许可为GPLv3协议.  
+其余许可为MIT协议.
 
 ---
 
