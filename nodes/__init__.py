@@ -15,6 +15,7 @@ from .nodes import (
     MMH3FunControlnetParams,
     MMH3SpatialInpaintParams,
 )
+from .tiled_diffusion import MMH3TiledDiffusion
 from .ltx import (
     LTX25UltimateUpscale,
     LTX25LatentUpscaleParams,
