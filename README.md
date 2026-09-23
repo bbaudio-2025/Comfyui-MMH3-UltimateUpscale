@@ -160,6 +160,8 @@ The H3 3D upscaler network code and normalization statistics are adapted from th
 The code for tiled diffusion references its original repo and its licence is GPLv3.  
 The rest is MIT.
 
+---
+
 ## Extra
 
 This project was vibe-coded by AI, If you run into any problems, it's best to search with AI.😂
