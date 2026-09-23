@@ -148,7 +148,7 @@ This node is built on top of following existing community projects:
   https://github.com/bbaudio-2025/Comfyui-MiniMax-H3-LatentSplit
 - **Latent model-based upscaling (H3 3D upscaler checkpoints & inference):**  
   https://github.com/LBH-123-AI/Comfyui_Minimax_h3_latent_Upscaler
-- **Tiled diffusion (spatial):**
+- **Tiled diffusion (spatial):**  
   https://github.com/shiimizu/ComfyUI-TiledDiffusion
 
 The H3 3D upscaler network code and normalization statistics are adapted from the second project; the temporal/spatial split, anchor and append logic follow the first.  
