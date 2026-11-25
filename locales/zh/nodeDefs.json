@@ -1,11 +1,11 @@
 {
   "MMH3LatentUpscaleWithModelParams": {
     "display_name": "MMH3 潜空间放大（模型参数）",
-    "description": "为 'MMH3 Ultimate Upscale' 节点打包 H3 3D 潜空间放大设置。使用 latent_upscale_models 文件夹中的 minimax_h3_latent_upscaler_3d 检查点（非标准 LatentUpscale 加载器——H3 权重与其支持的架构不匹配）。仅接受 .safetensors 检查点；.pth 等 pickle 格式加载时可执行任意代码，因此被拒绝。",
+    "description": "为 'MMH3 Ultimate Upscale' 节点打包 H3 潜空间放大设置。使用 latent_upscale_models 文件夹中的 minimax_h3_latent_upscaler_3d 或 minimax_h3_latent_upscaler_2d 检查点（非标准 LatentUpscale 加载器——H3 权重与其支持的架构不匹配），架构（3D/2D）由权重自动识别。仅接受 .safetensors 检查点；.pth 等 pickle 格式加载时可执行任意代码，因此被拒绝。",
     "inputs": {
       "model_name": {
         "name": "模型名称",
-        "tooltip": "latent_upscale_models 文件夹中的 H3 潜空间放大模型文件（如 minimax_h3_latent_upscaler_3d_*.safetensors）。仅接受 .safetensors——出于安全考虑，.pth/.pt/.ckpt 等 pickle 检查点一律拒绝。加载非 H3 放大模型可能报错。"
+        "tooltip": "latent_upscale_models 文件夹中的 H3 潜空间放大模型文件（如 minimax_h3_latent_upscaler_3d_*.safetensors 或 minimax_h3_latent_upscaler_2d_conv_v1*.safetensors）。仅接受 .safetensors——出于安全考虑，.pth/.pt/.ckpt 等 pickle 检查点一律拒绝。加载非 H3 放大模型可能报错。"
       },
       "width": {
         "name": "宽度",
@@ -14,6 +14,10 @@
       "height": {
         "name": "高度",
         "tooltip": "放大后整体画面（每帧）的目标像素高度。吸附为 32 的倍数（即 H3 放大器的必需网格）。必须与 conditioning 的生成尺寸一致。"
+      },
+      "sharpness": {
+        "name": "锐度档位",
+        "tooltip": "2D 放大器检查点的锐度档位（1-6），默认 1 为规范零点。3D 检查点没有档位分支，此参数被忽略。"
       }
     },
     "outputs": {
