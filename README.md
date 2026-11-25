@@ -10,6 +10,7 @@ MiniMax H3 generates video as a nested latent that bundles 24-channel video **an
 
 ## Changelog
 
+- **20261125 - Add support for minimax_h3_latent_upscaler_2d_conv_v1**.
 - **20260923 - Add new node MMH3 Tiled Diffusion (Experimental).** It can be used to replace spatial split, basically without any seam defects.
 - **20260905 - Latent upscale checkpoints are now `.safetensors` only.** Pickle formats (`.pth` / `.pt` / `.ckpt`) are no longer listed or loaded, because `torch.load()` on a pickle checkpoint can execute arbitrary code and `weights_only=True` is not a reliable mitigation on torch < 2.6 ([CVE-2025-32434](https://nvd.nist.gov/vuln/detail/CVE-2025-32434)). If you were using `minimax_h3_latent_upscaler_3d_fp32.pth`, convert it once (see [Upscale model format](#upscale-model-format-safetensors-only)) or switch to the fp16 / bf16 `.safetensors` build. The scanner now also searches every registered `latent_upscale_models` directory (including `extra_model_paths.yaml`) instead of only the first one.
 - **20260831 - Rearrange the code structure. Bugs fix and add some features.** Add `dynamic fade` to improve seam removal when denoise step>1. Add `brightness match` to to help reduce brightness flickering.
