@@ -983,7 +983,7 @@ def spatial_process(chunk_v, chunk_a, cond, sp, model, noise, sampler, sigmas, n
 # ---------------------------------------------------------------------------
 
 class MMH3LatentUpscaleWithModelParams(io.ComfyNode):
-    """Bundle the H3 3D model-based latent upscale settings consumed by the Ultimate Upscale node."""
+    """Bundle the H3 model-based latent upscale settings consumed by the Ultimate Upscale node."""
 
     @classmethod
     def define_schema(cls):
@@ -992,17 +992,19 @@ class MMH3LatentUpscaleWithModelParams(io.ComfyNode):
             display_name="MMH3 Latent Upscale with Model Params",
             category="model/latent/minimax",
             description=(
-                "Bundle the H3 3D latent upscale settings for the 'MMH3 Ultimate "
-                "Upscale' node. Uses the minimax_h3_latent_upscaler_3d checkpoints "
-                "from the latent_upscale_models folder (not the standard LatentUpscale "
+                "Bundle the H3 latent upscale settings for the 'MMH3 Ultimate "
+                "Upscale' node. Uses the minimax_h3_latent_upscaler_3d or "
+                "minimax_h3_latent_upscaler_2d checkpoints from the "
+                "latent_upscale_models folder (not the standard LatentUpscale "
                 "loader - the H3 weights do not match its supported architectures). "
+                "The architecture (3D/2D) is detected from the weights. "
                 "Only .safetensors checkpoints are accepted; pickle formats such as "
                 ".pth are refused because they can execute arbitrary code when loaded."
             ),
             search_aliases=["h3 upscale params", "upscale param", "h3 upscale"],
             inputs=[
                 io.Combo.Input("model_name", options=_scan_models(),
-                               tooltip="The H3 latent upscale model file in the latent_upscale_models folder (e.g. minimax_h3_latent_upscaler_3d_*.safetensors). Only .safetensors is accepted - .pth/.pt/.ckpt pickle checkpoints are refused for security reasons. Loading a non-H3 upscale model may error."),
+                               tooltip="The H3 latent upscale model file in the latent_upscale_models folder (e.g. minimax_h3_latent_upscaler_3d_*.safetensors or minimax_h3_latent_upscaler_2d_conv_v1*.safetensors). Only .safetensors is accepted - .pth/.pt/.ckpt pickle checkpoints are refused for security reasons. Loading a non-H3 upscale model may error."),
                 io.Int.Input("width", default=1280, min=64, max=4096, step=32,
                              tooltip="Target overall pixel width of the upscaled frame (snapped to a multiple of 32, the H3 upscaler's required grid). Must match the conditioning's generation size."),
                 io.Int.Input("height", default=704, min=64, max=4096, step=32,
@@ -1011,6 +1013,8 @@ class MMH3LatentUpscaleWithModelParams(io.ComfyNode):
                 io.Combo.Input("precision", options=["fp16", "fp32", "bf16"], default="fp16"),
                 io.Boolean.Input("offload_model", default=True,
                                  tooltip="Whether to offload the H3 upscale model to CPU (freeing GPU VRAM) right after upscaling. Default on keeps the low-VRAM behaviour; turn it off to keep the model resident on the device so the next chunk skips the re-upload and runs faster."),
+                io.Int.Input("sharpness", default=1, min=1, max=6, step=1,
+                             tooltip="Sharpness tier (1-6) of the 2D upscaler checkpoints; tier 1 is the neutral/default. Ignored by 3D checkpoints, which have no tier branch."),
             ],
             outputs=[
                 H3_UPSCALE_PARAM.Output("latent_upscale_param",
@@ -1019,7 +1023,8 @@ class MMH3LatentUpscaleWithModelParams(io.ComfyNode):
         )
 
     @classmethod
-    def execute(cls, model_name, width, height, device, precision, offload_model) -> io.NodeOutput:
+    def execute(cls, model_name, width, height, device, precision, offload_model,
+                sharpness=1) -> io.NodeOutput:
         width = int(round(width / 32.0)) * 32
         height = int(round(height / 32.0)) * 32
         param = {
@@ -1029,6 +1034,7 @@ class MMH3LatentUpscaleWithModelParams(io.ComfyNode):
             "device": device,
             "precision": precision,
             "offload_model": offload_model,
+            "sharpness": int(sharpness),
         }
         return io.NodeOutput(param)
 
