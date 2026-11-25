@@ -10,6 +10,7 @@ MiniMax H3 生成的视频是一个"嵌套潜变量"——把 24 通道的视频
 
 ## 更新信息
 
+- **20261125 - 添加minimax_h3_latent_upscaler_2d_conv_v1的支持**。
 - **20260923 - 添加新节点MMH3 Tiled Diffusion (Experimental).** 它可以用来取代空间分割，几乎没有接缝瑕疵。
 - **20260905 - latent 放大模型现在只支持 `.safetensors`。** 不再列出、也不再加载 `.pth` / `.pt` / `.ckpt` 等 pickle 格式：`torch.load()` 加载 pickle 权重时可以执行任意代码，而在 torch < 2.6 上 `weights_only=True` 也并非可靠防护（[CVE-2025-32434](https://nvd.nist.gov/vuln/detail/CVE-2025-32434)）。如果你之前在用 `minimax_h3_latent_upscaler_3d_fp32.pth`，请按下方[放大模型格式](#放大模型格式仅支持-safetensors)转换一次，或改用 fp16 / bf16 的 `.safetensors` 版本。扫描逻辑同时改为遍历所有已注册的 `latent_upscale_models` 目录（含 `extra_model_paths.yaml`），而不再只看第一个。
 - **20260831 - 整理代码结构，修复bugs，添加一些新功能。** 添加`dynamic fade`改善多步数下接缝过渡，添加`brightness match`改善亮度闪烁问题。
